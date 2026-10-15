@@ -220,7 +220,7 @@ test('Apple Wallet: signed pkpass download with the stamp strip', async () => {
   assert.equal(pass.passTypeIdentifier, PASS_TYPE);
   assert.equal(pass.serialNumber, aliceSerial);
   assert.equal(pass.webServiceURL, 'https://loyalty.example.com/api/wallet/apple');
-  assert.equal(pass.storeCard.headerFields[0].value, '1/10');
+  assert.equal(pass.storeCard.headerFields.find((f: any) => f.key === 'stamps').value, '1/10');
   assert.equal(pass.barcodes[0].message, aliceQr);
   // The detached PKCS#7 signature verifies against the signing CA.
   execFileSync('unzip', ['-o', '-q', file, '-d', dir]);

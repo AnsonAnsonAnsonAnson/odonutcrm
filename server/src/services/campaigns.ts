@@ -4,7 +4,8 @@ import { issueVoucher } from './loyalty.js';
 import type { Notifier } from './notify.js';
 
 export const SegmentSchema = z.object({
-  type: z.enum(['all', 'active', 'inactive', 'new', 'near_reward', 'birthday_month', 'tag', 'never_visited']).default('all'),
+  type: z.enum(['all', 'active', 'inactive', 'new', 'near_reward', 'birthday_month', 'tag', 'never_visited', 'tier']).default('all'),
+  tierId: z.string().uuid().optional(),
   days: z.coerce.number().int().min(1).max(3650).optional(),
   tag: z.string().max(50).optional(),
   // Stamps away from a reward, for near_reward.
@@ -40,6 +41,9 @@ export function segmentWhere(seg: Segment, params: unknown[]): string {
       break;
     case 'birthday_month':
       parts.push(`extract(month FROM c.birthday) = extract(month FROM now())`);
+      break;
+    case 'tier':
+      parts.push(`c.tier_id = ${p(seg.tierId ?? '00000000-0000-0000-0000-000000000000')}`);
       break;
     case 'tag':
       parts.push(`${p(seg.tag ?? '')} = ANY(c.tags)`);

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../../api';
 import { useConfig } from '../../config';
 import { LangButton, useI18n } from '../../i18n';
@@ -14,6 +14,10 @@ export default function Join() {
   const [params] = useSearchParams();
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
+  const [mode, setMode] = useState<'email' | 'phone'>('email');
+  const [cc, setCc] = useState('+852');
+  const [mobile, setMobile] = useState('');
+  const [promo, setPromo] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +47,13 @@ export default function Join() {
       saved = saved ?? sessionStorage.getItem('ref');
     } catch {}
     if (saved) setForm((f) => ({ ...f, referralCode: saved! }));
+    // A promo code on the link (e.g. from the counter poster) is applied once the member exists.
+    let p = params.get('promo');
+    try {
+      if (p) sessionStorage.setItem('promo', p);
+      else p = sessionStorage.getItem('promo');
+    } catch {}
+    if (p) setPromo(p.toUpperCase());
     api('/api/me').then(() => nav('/me', { replace: true })).catch(() => {});
   }, []);
 
@@ -59,10 +70,27 @@ export default function Join() {
     }
   }
 
+  const phone = `${cc}${mobile.replace(/\D/g, '').replace(/^0+/, '')}`;
+  const who = mode === 'email' ? { email } : { phone };
+
+  async function claimPromo(): Promise<{ title: string }[]> {
+    if (!promo) return [];
+    try {
+      const r = await api<{ title: string }>('/api/me/promo', { body: { code: promo } });
+      return [{ title: r.title }];
+    } catch {
+      return [];
+    } finally {
+      try {
+        sessionStorage.removeItem('promo');
+      } catch {}
+    }
+  }
+
   const sendCode = (e?: FormEvent) => {
     e?.preventDefault();
     run(async () => {
-      await api('/api/auth/otp', { body: { email, locale } });
+      await api('/api/auth/otp', { body: { ...who, locale } });
       setStep('code');
     });
   };
@@ -70,8 +98,11 @@ export default function Join() {
   const verify = (e: FormEvent) => {
     e.preventDefault();
     run(async () => {
-      const r = await api<{ status: string }>('/api/auth/verify', { body: { email, code } });
-      if (r.status === 'ok') nav('/me', { replace: true });
+      const r = await api<{ status: string }>('/api/auth/verify', { body: { ...who, code } });
+      if (r.status === 'ok') {
+        await claimPromo();
+        nav('/me', { replace: true });
+      }
       else setStep('signup');
     });
   };
@@ -96,7 +127,8 @@ export default function Join() {
       try {
         sessionStorage.removeItem('ref');
       } catch {}
-      nav('/me/wallet', { replace: true, state: { welcome: r.welcomeVouchers } });
+      const gifts = await claimPromo();
+      nav('/me/wallet', { replace: true, state: { welcome: [...r.welcomeVouchers, ...gifts] } });
     });
   };
 
@@ -152,6 +184,7 @@ export default function Join() {
           <label>{t('referral')}<input value={form.referralCode} onChange={set('referralCode')} /></label>
           <label className="check"><input type="checkbox" checked={form.marketingOptIn} onChange={set('marketingOptIn')} />{t('optIn')}</label>
           <label className="check"><input type="checkbox" required checked={form.acceptTerms} onChange={set('acceptTerms')} />{t('acceptTerms')}</label>
+          {cfg.privacyPolicy && <p className="fine"><Link to="/privacy">{t('privacy')}</Link></p>}
           <p className="fine">{cfg.terms}</p>
           <ErrorText error={error} />
           <button className="btn primary" disabled={busy}>{busy ? <Spinner /> : t('join')}</button>
@@ -170,18 +203,39 @@ export default function Join() {
       </div>
       <div className="sheet">
         <h2 className="divider-title">{t('signInRegister')}</h2>
+        {promo && <p className="promo-note">🎁 {t('promoWaiting').replace('{c}', promo)}</p>}
         {step === 'email' ? (
           <form className="form" onSubmit={sendCode}>
-            <label>
-              {t('email')}
-              <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </label>
+            {mode === 'email' ? (
+              <label>
+                {t('email')}
+                <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </label>
+            ) : (
+              <label>
+                {t('mobile')}
+                <div className="row">
+                  <select value={cc} onChange={(e) => setCc(e.target.value)} className="cc">
+                    {['+852', '+853', '+86', '+886', '+65', '+44', '+1'].map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                  <input required inputMode="tel" autoComplete="tel-national" value={mobile} onChange={(e) => setMobile(e.target.value)} />
+                </div>
+                <small className="muted">{t('mobileHint')}</small>
+              </label>
+            )}
             <ErrorText error={error} />
             <button className="btn primary" disabled={busy}>{busy ? <Spinner /> : t('nextStep')}</button>
+            {cfg.smsSignIn && (
+              <div className="links">
+                <button type="button" className="link" onClick={() => { setMode(mode === 'email' ? 'phone' : 'email'); setError(null); }}>
+                  {mode === 'email' ? t('useMobile') : t('useEmail')}
+                </button>
+              </div>
+            )}
           </form>
         ) : (
           <form className="form" onSubmit={verify}>
-            <p className="muted">{t('codeSent')} <b>{email}</b></p>
+            <p className="muted">{t('codeSent')} <b>{mode === 'email' ? email : phone}</b></p>
             <label>
               {t('code')}
               <input
@@ -200,7 +254,7 @@ export default function Join() {
             <button className="btn primary" disabled={busy || code.length !== 6}>{busy ? <Spinner /> : t('verify')}</button>
             <div className="links">
               <button type="button" className="link" onClick={() => sendCode()} disabled={busy}>{t('resend')}</button>
-              <button type="button" className="link" onClick={() => { setStep('email'); setCode(''); }}>{t('changeEmail')}</button>
+              <button type="button" className="link" onClick={() => { setStep('email'); setCode(''); }}>{mode === 'email' ? t('changeEmail') : t('changeMobile')}</button>
             </div>
           </form>
         )}

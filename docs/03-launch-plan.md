@@ -69,11 +69,12 @@ Look at the dashboard and decide one change per month:
 
 ## Operations checklist
 
-- **Backups:** daily `docker compose exec db pg_dump -U odonut odonut | gzip > backup-$(date +%F).sql.gz`, copied off the server, kept 30 days. Test a restore once.
+- **Backups:** the `backup` container writes `./backups/odonut-YYYYMMDD-HHMM.sql.gz` every day and keeps 30 days. Copy the folder off the server (e.g. a nightly `rclone` to cloud storage). Test a restore once: `gunzip -c backups/<file> | docker compose exec -T db psql -U odonut -d odonut`.
 - **Certificates:** the Apple Pass Type ID certificate expires. Put the expiry date in your calendar a month ahead; renewing means a new certificate for the same Pass Type ID, so existing passes keep working.
 - **Updates:** `git pull && docker compose up -d --build`. Migrations run automatically on start.
 - **Uptime:** point an uptime monitor at `https://your-domain/healthz`.
-- **Privacy:** publish a privacy policy (what you collect, why, how to opt out or delete) and link it from the sign-up page terms.
+- **Privacy:** write your privacy policy in Program & automations (what you collect, why, how to opt out or delete). It shows at `/privacy` and is linked from sign-up and member settings; have it checked against the PDPO.
+- **Counter poster:** Admin → Counter poster prints an A4 sign with the join QR; pick a promo code to give poster sign-ups a gift and to measure the poster's sign-ups.
 
 ## Running costs (estimate)
 
@@ -83,6 +84,7 @@ Look at the dashboard and decide one change per month:
 | VPS | about HK$40 to 150 a month |
 | Domain | about HK$100 to 200 a year |
 | Email sending | free tiers cover thousands of codes a month |
+| SMS sign-in (optional, Twilio) | about US$0.05 to 0.08 per text to HK numbers |
 | Google Wallet, web push, Apple pass pushes | free |
 
 Compare: Juicysuite's base plan is HK$22,500 a year before campaigns or messaging packs.

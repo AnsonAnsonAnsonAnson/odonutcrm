@@ -38,6 +38,8 @@ export interface PublicConfig {
   appleWallet: boolean;
   googleWallet: boolean;
   vapidPublicKey: string | null;
+  privacyPolicy: string;
+  smsSignIn: boolean;
 }
 
 export const platform = (() => {

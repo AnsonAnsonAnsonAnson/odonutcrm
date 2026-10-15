@@ -8,7 +8,7 @@ export interface StaffMe {
   role: 'owner' | 'manager' | 'staff';
   storeId: string | null;
   store: { id: string; name: string } | null;
-  program: { stamps_required: number; max_stamps_per_scan: number; brand_name: string };
+  program: { stamps_required: number; max_stamps_per_scan: number; brand_name: string; background_color: string; foreground_color: string };
 }
 
 /** Loads the signed-in staff member or redirects to the staff login. */

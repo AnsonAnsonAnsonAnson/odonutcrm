@@ -55,9 +55,11 @@ This is the technical design of what is built in this repository: front end, bac
 | `apple_devices`, `apple_registrations`, `apple_logs` | Apple Wallet web service state |
 | `web_push_subscriptions` | Browser push endpoints |
 | `staff_users`, `stores` | Team with roles (owner, manager, staff) and shop locations |
-| `otp_codes`, `job_runs` | Hashed sign-in codes; once-a-day job bookkeeping |
+| `tiers` | Membership levels (default Sprinkle 0, Glazed 20, Golden 50 stamps in 365 days), perks, colour and a one-time upgrade voucher |
+| `api_keys` | POS keys (only a SHA-256 hash is stored), optional store, last used, revoked |
+| `otp_codes`, `job_runs` | Hashed sign-in codes (email or SMS); once-a-day job bookkeeping |
 
-Schema: `server/migrations/001_init.sql`.
+Schema: `server/migrations/001_init.sql` and `002_suite.sql`.
 
 ## 4. Key flows
 
@@ -81,9 +83,30 @@ Schema: `server/migrations/001_init.sql`.
 2. The phone calls `GET /v1/devices/{device}/registrations/{passType}?passesUpdatedSince=…`, receives the changed serial numbers, then `GET /v1/passes/{passType}/{serial}` for the new pass.
 3. iOS compares old and new field values. Fields with a `changeMessage` (stamps, rewards, the news message) show that text on the lock screen.
 
+### Membership tiers
+- A member's tier is set by their purchase and bonus stamps in a rolling window (default 365 days). It is re-checked on every stamp (upgrades are instant) and once a day (members who stop visiting move down).
+- Reaching a tier for the first time issues its upgrade voucher once (unique index on voucher source), sends "Welcome to Glazed!" to the lock screen, and adds a TIER field to the pass header.
+- Admin → Tiers edits levels; campaigns can target one tier.
+
+### SMS sign-in (optional)
+With Twilio configured, existing members can sign in with their mobile number instead of email. Codes go only to numbers that already belong to a member (stops SMS pumping), at most 5 a day and one per 45 seconds. New members still sign up with email.
+
+### POS integration
+Admin → POS integration creates an API key (shown once, stored hashed). The till sends `Authorization: Bearer odk_…`:
+
+| Call | What it does |
+|---|---|
+| `GET /api/pos/v1/members/lookup?phone=91234567` (or `qrToken`, `email`, `memberId`) | Member, stamps, tier and active vouchers. Phone matches on the last 8 digits; 409 if two members share it |
+| `POST /api/pos/v1/stamps` `{"member":{"phone":"91234567"},"orderId":"A1001","count":1}` | Adds purchase stamps. The same `orderId` never stamps twice (`duplicate: true`), so retries are safe. Returns stamps, rewards issued and tier |
+| `GET /api/pos/v1/vouchers/{code}` | Voucher status, title, kind and value |
+| `POST /api/pos/v1/vouchers/redeem` `{"code":"…"}` | Redeems; the audit row records the API key and store |
+
+Stamp rules (per-scan cap, cooldown) apply exactly as at the counter. Revoking a key stops it at once.
+
 ### Campaigns and automations
 - Campaign send: select the segment → optionally issue a voucher to each recipient (once per campaign, enforced by a unique index) → set the card's news message → push wallets and web push → log.
-- Daily at 10:00 HK time: birthday vouchers (once a year), win-back for members lapsed N days (once per lapse), voucher expiry, expiry reminders, clean-up.
+- Daily at 10:00 HK time: birthday vouchers (once a year), win-back for members lapsed N days (once per lapse), an "almost there" nudge for members 1 to 2 stamps from a reward who have not visited for a week (once per lapse), tier review, voucher expiry, expiry reminders, clean-up.
+- Sign-up sends a welcome email with a link back to the Member Center (can be switched off).
 - Scheduled campaigns are checked every minute.
 
 ### Redeeming a voucher
@@ -94,12 +117,13 @@ Member shows the voucher QR in the Member Center. Staff scan it and tap Redeem. 
 | Area | Endpoints |
 |---|---|
 | Public | `GET /api/public/config`, `GET /healthz` |
-| Member auth | `POST /api/auth/otp`, `/verify`, `/signup`, `/logout`; `GET /api/auth/card-login` (pass link), `/handoff` (desktop QR) |
+| Member auth | `POST /api/auth/otp`, `/verify` (email, or phone when SMS is on), `/signup`, `/logout`; `GET /api/auth/card-login` (pass link), `/handoff` (desktop QR) |
 | Member | `GET/PATCH/DELETE /api/me`, `GET /api/me/vouchers`, `/history`, `/notifications`, `/handoff`; `POST /api/me/promo`, `/push-subscription` |
 | Wallet | `GET /api/wallet/apple/pass`, `/google/save`, `/assets/strip/{n}-{total}.png`, `/assets/logo-square.png` |
 | Apple web service | `POST/DELETE /api/wallet/apple/v1/devices/…/registrations/…/{serial}`, `GET …/registrations/{passType}`, `GET /v1/passes/{passType}/{serial}`, `POST /v1/log` |
 | Staff | `POST /api/staff/login`, `/logout`, `/scan`, `/stamp`, `/redeem`; `GET /api/staff/me`, `/lookup`, `/activity` |
-| Admin | dashboard; customers (list, CSV, detail, tags/notes, stamp adjust, gift voucher, message, delete); voucher templates; promo codes; campaigns (preview, create, send, cancel); program settings; Google class sync; stores; staff |
+| Admin | dashboard; customers (list, CSV, detail, tags/notes, stamp adjust, gift voucher, message, delete); voucher templates; promo codes; campaigns (preview, create, send, cancel); program settings; Google class sync; tiers; API keys; stores; staff |
+| POS | `GET /api/pos/v1/members/lookup`, `POST /stamps`, `GET /vouchers/{code}`, `POST /vouchers/redeem` (Bearer API key) |
 
 ## 6. Security and privacy
 
@@ -115,16 +139,15 @@ Member shows the voucher QR in the Member Center. Staff scan it and tap Redeem. 
 
 - A single small VPS handles thousands of members: stamping is one short transaction; pass images are cached in memory.
 - Multiple app containers are safe: jobs use an advisory lock; migrations use a transaction lock.
-- **Backups:** schedule `pg_dump` daily (see the launch plan) and keep 30 days off the server.
+- **Backups:** the `backup` service in docker-compose writes a gzipped `pg_dump` to `./backups` every 24 hours and deletes files older than 30 days. Copy that folder off the server as well.
 - **Monitoring:** `GET /healthz` for uptime checks; Apple device errors land in `apple_logs` and the app log.
 
 ## 8. Testing
 
-`npm test` runs end-to-end API tests against a real Postgres (13 scenarios): sign-up and OTP rules, stamping with cooldown, cap and idempotency, card completion and rollover, redemption, promo codes, referral, signed `.pkpass` contents and signature verification, the full Apple web service cycle including push and `304 Not Modified`, campaigns, birthday, win-back and expiry automations, dashboard, roles, CSV export and account deletion.
+`npm test` runs end-to-end API tests against a real Postgres (21 scenarios): sign-up and OTP rules, stamping with cooldown, cap and idempotency, card completion and rollover, redemption, promo codes, referral, signed `.pkpass` contents and signature verification, the full Apple web service cycle including push and `304 Not Modified`, campaigns, birthday, win-back and expiry automations, dashboard, roles, CSV export and account deletion, plus tiers (upgrade, voucher once, pass header, downgrade), SMS sign-in limits, the POS API (keys, order idempotency, redemption audit, revocation), the near-reward nudge, the privacy page, the APNs client against a local HTTP/2 TLS mock, and the Google Wallet client with a mocked API.
 
 ## 9. What is intentionally left for later
 
-- **POS integration** (auto-stamp from receipts): add a `POST /api/pos/stamp` with an API key once you pick a POS. The stamping service already supports idempotency keys for this.
-- **SMS or WhatsApp sign-in** (needs a provider such as Twilio or 360dialog; per-message cost).
-- **Points and tiers** in addition to stamps.
+- **WhatsApp messages** (needs a WhatsApp Business provider such as 360dialog and template approval; per-message cost).
+- **Points** (spend-based) in addition to stamps and tiers. Tiers cover the "status" part; points only make sense if prices vary a lot.
 - **Native app:** not needed; the wallet pass plus web app covers the same jobs.

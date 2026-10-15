@@ -33,12 +33,13 @@ export function Members() {
       </div>
       {!data ? <Spinner /> : (
         <table className="table">
-          <thead><tr><th>Name</th><th>Email</th><th>Stamps</th><th>Visits</th><th>Last visit</th><th>Wallet</th><th>Opt-in</th></tr></thead>
+          <thead><tr><th>Name</th><th>Email</th><th>Tier</th><th>Stamps</th><th>Visits</th><th>Last visit</th><th>Wallet</th><th>Opt-in</th></tr></thead>
           <tbody>
             {data.rows.map((r) => (
               <tr key={r.id}>
                 <td><Link to={`/admin/members/${r.id}`}>{r.first_name} {r.last_name}</Link></td>
                 <td>{r.email}</td>
+                <td>{r.tier ?? '—'}</td>
                 <td>{r.stamps}</td>
                 <td>{r.visit_count}</td>
                 <td>{fmtDate(r.last_visit_at)}</td>
@@ -101,7 +102,7 @@ export function MemberDetail() {
   return (
     <div>
       <Link to="/admin/members" className="link">← Members</Link>
-      <h1>{c.first_name} {c.last_name}</h1>
+      <h1>{c.first_name} {c.last_name} {c.tier && <span className="tier-pill">{c.tier}</span>}</h1>
       <p className="muted">
         {c.email} · {c.phone} · joined {fmtDate(c.created_at)} · birthday {c.birthday ?? '–'}
         {c.referred_by_name && ` · referred by ${c.referred_by_name}`} · {c.referrals} referral(s)

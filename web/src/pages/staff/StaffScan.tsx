@@ -17,6 +17,7 @@ interface Summary {
     qr_token: string;
     stamps: number;
     stamps_required: number;
+    tier: string | null;
   };
   vouchers: { code: string; title: string; description: string; expires_at: string }[];
 }
@@ -73,12 +74,13 @@ export default function StaffScan() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ stamps: number; stampsRequired: number; rewards: { title: string }[] }>('/api/staff/stamp', {
+      const r = await api<{ stamps: number; stampsRequired: number; rewards: { title: string }[]; tierUpgrade: string | null }>('/api/staff/stamp', {
         body: { cardId: result.customer.card_id, count, idempotencyKey: newKey() },
       });
-      const msg = r.rewards.length
+      let msg = r.rewards.length
         ? `🎉 Card complete! ${r.rewards.map((x) => x.title).join(', ')} issued. Now ${r.stamps}/${r.stampsRequired}.`
         : `✓ ${count} stamp${count > 1 ? 's' : ''} added. Now ${r.stamps}/${r.stampsRequired}.`;
+      if (r.tierUpgrade) msg += ` ⭐ Now a ${r.tierUpgrade} member!`;
       await scan(result.customer.qr_token);
       setFlash(msg);
       loadActivity();
@@ -150,7 +152,7 @@ export default function StaffScan() {
           {!c && !error && <p className="muted">Scan the QR on the member's wallet card or voucher.</p>}
           {c && (
             <>
-              <h2>{c.first_name} {c.last_name}</h2>
+              <h2>{c.first_name} {c.last_name} {c.tier && <span className="tier-pill">{c.tier}</span>}</h2>
               <p className="muted">
                 {c.visit_count} visit{c.visit_count === 1 ? '' : 's'}
                 {c.last_visit_at && ` · last ${fmtDate(c.last_visit_at)}`}

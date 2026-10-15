@@ -2,6 +2,7 @@ import { one, many, withTx, type Db, type Queryable, type Tx } from '../db.js';
 import { HttpError } from '../lib/auth.js';
 import { randomCode, randomToken } from '../lib/crypto.js';
 import { getProgram, type CardRow } from './program.js';
+import { reevaluateTier, type TierChange } from './tiers.js';
 
 export interface IssuedVoucher {
   id: string;
@@ -11,7 +12,7 @@ export interface IssuedVoucher {
   source: string;
 }
 
-export type VoucherSource = 'welcome' | 'stamp_reward' | 'birthday' | 'winback' | 'promo' | 'referral' | 'campaign' | 'manual';
+export type VoucherSource = 'welcome' | 'stamp_reward' | 'birthday' | 'winback' | 'promo' | 'referral' | 'campaign' | 'manual' | 'tier_upgrade';
 
 export async function issueVoucher(
   q: Queryable,
@@ -38,7 +39,7 @@ export async function issueVoucher(
     );
     if (row) return { ...row, title: tpl.title };
     // Conflict: either a code collision (retry) or the once-per-source guard (stop).
-    if (sourceRef && ['promo', 'campaign', 'referral'].includes(source)) {
+    if (sourceRef && ['promo', 'campaign', 'referral', 'tier_upgrade'].includes(source)) {
       const dup = await one(q, 'SELECT 1 FROM vouchers WHERE customer_id = $1 AND source = $2 AND source_ref = $3', [
         customerId,
         source,
@@ -93,6 +94,12 @@ export async function createCustomer(tx: Tx, input: NewCustomer) {
     `INSERT INTO cards (customer_id, serial_number, auth_token, qr_token) VALUES ($1,$2,$3,$4) RETURNING *`,
     [customer!.id, 'OD' + randomCode(12), randomToken(24), 'ODC-' + randomCode(14)],
   );
+  if (program.tiers_enabled) {
+    await tx.query(
+      `UPDATE customers SET tier_id = (SELECT id FROM tiers WHERE min_stamps = 0), tier_since = now() WHERE id = $1`,
+      [customer!.id],
+    );
+  }
   const vouchers: IssuedVoucher[] = [];
   if (program.welcome_template_id) {
     const v = await issueVoucher(tx, customer!.id, program.welcome_template_id, 'welcome');
@@ -111,6 +118,8 @@ export interface StampInput {
   note?: string;
   idempotencyKey?: string;
   bypassLimits?: boolean;
+  apiKeyId?: string | null;
+  customerId?: string;
 }
 
 export interface StampResult {
@@ -120,6 +129,7 @@ export interface StampResult {
   stampsRequired: number;
   rewards: IssuedVoucher[];
   referrer: { customerId: string; voucher: IssuedVoucher } | null;
+  tier: TierChange | null;
 }
 
 export async function addStamps(db: Db, input: StampInput): Promise<StampResult> {
@@ -130,13 +140,15 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
     const program = await getProgram(tx);
     const card = input.cardId
       ? await one<CardRow>(tx, 'SELECT * FROM cards WHERE id = $1 FOR UPDATE', [input.cardId])
-      : await one<CardRow>(tx, 'SELECT * FROM cards WHERE qr_token = $1 FOR UPDATE', [input.qrToken]);
+      : input.customerId
+        ? await one<CardRow>(tx, 'SELECT * FROM cards WHERE customer_id = $1 FOR UPDATE', [input.customerId])
+        : await one<CardRow>(tx, 'SELECT * FROM cards WHERE qr_token = $1 FOR UPDATE', [input.qrToken]);
     if (!card) throw new HttpError(404, 'Card not found');
 
     if (input.idempotencyKey) {
       const prior = await one(tx, 'SELECT 1 FROM stamp_events WHERE idempotency_key = $1', [input.idempotencyKey]);
       if (prior) {
-        return { duplicate: true, customerId: card.customer_id, card, stampsRequired: program.stamps_required, rewards: [], referrer: null };
+        return { duplicate: true, customerId: card.customer_id, card, stampsRequired: program.stamps_required, rewards: [], referrer: null, tier: null };
       }
     }
 
@@ -157,9 +169,9 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
 
     const delta = Math.max(input.count, -card.stamps);
     await tx.query(
-      `INSERT INTO stamp_events (card_id, delta, reason, staff_id, store_id, note, idempotency_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [card.id, delta, input.reason, input.staffId, input.storeId, input.note ?? null, input.idempotencyKey ?? null],
+      `INSERT INTO stamp_events (card_id, delta, reason, staff_id, store_id, note, idempotency_key, api_key_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [card.id, delta, input.reason, input.staffId, input.storeId, input.note ?? null, input.idempotencyKey ?? null, input.apiKeyId ?? null],
     );
 
     let stamps = card.stamps + delta;
@@ -199,11 +211,13 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
       }
     }
 
-    return { duplicate: false, customerId: card.customer_id, card: updated!, stampsRequired: program.stamps_required, rewards, referrer };
+    const tier = program.tiers_enabled ? await reevaluateTier(tx, card.customer_id, program.tier_window_days) : null;
+
+    return { duplicate: false, customerId: card.customer_id, card: updated!, stampsRequired: program.stamps_required, rewards, referrer, tier };
   });
 }
 
-export async function redeemVoucher(db: Db, code: string, staffId: string | null, storeId: string | null) {
+export async function redeemVoucher(db: Db, code: string, staffId: string | null, storeId: string | null, apiKeyId: string | null = null) {
   return withTx(db, async (tx) => {
     const v = await one<{ id: string; customer_id: string; status: string; expires_at: Date; title: string }>(
       tx,
@@ -220,8 +234,8 @@ export async function redeemVoucher(db: Db, code: string, staffId: string | null
       throw new HttpError(409, 'Voucher has expired', 'expired');
     }
     await tx.query(
-      `UPDATE vouchers SET status = 'redeemed', redeemed_at = now(), redeemed_by = $2, redeemed_store_id = $3 WHERE id = $1`,
-      [v.id, staffId, storeId],
+      `UPDATE vouchers SET status = 'redeemed', redeemed_at = now(), redeemed_by = $2, redeemed_store_id = $3, redeemed_api_key_id = $4 WHERE id = $1`,
+      [v.id, staffId, storeId, apiKeyId],
     );
     await tx.query('UPDATE cards SET updated_at = now() WHERE customer_id = $1', [v.customer_id]);
     return { voucherId: v.id, customerId: v.customer_id, title: v.title };

@@ -4,9 +4,10 @@ A self-hosted loyalty system in the style of Wanpo's Juicysuite member club: cus
 
 | | |
 |---|---|
-| **Member site** `/` and `/me` | Email code sign-in, sign-up with welcome reward, add-to-wallet page, stamp card, vouchers with QR, promo codes, history, refer a friend, notifications, EN / 繁中 |
-| **Staff counter** `/staff` | Camera QR scanner (or phone/email lookup), add stamps, redeem vouchers, last 24 hours of activity |
-| **Admin** `/admin` | Dashboard (members, active, repeat rate, redemptions, cohorts, card progress), members CRM, campaigns with segments and scheduling, vouchers and promo codes, automations (welcome, birthday, win-back, referral, expiry reminders), stores, team roles |
+| **Member site** `/` and `/me` | Email code sign-in (SMS optional), sign-up with welcome reward and welcome email, add-to-wallet page, stamp card, tier and progress, vouchers with QR, promo codes (also from a poster link), history, messages inbox, refer a friend, notifications, privacy page, EN / 繁中 |
+| **Staff counter** `/staff` | Camera QR scanner (or phone/email lookup), member tier, add stamps, redeem vouchers, last 24 hours of activity |
+| **Admin** `/admin` | Dashboard (members, active, repeat rate, redemptions, cohorts, card progress), members CRM, campaigns with segments and scheduling, vouchers and promo codes, automations (welcome, birthday, win-back, almost-there nudge, referral, expiry reminders), membership tiers, POS API keys, printable counter poster, privacy policy, stores, team roles |
+| **POS API** `/api/pos/v1` | Your till stamps cards per paid order (safe retries), looks up members by phone and redeems vouchers |
 | **Wallet** | Signed Apple `.pkpass` with a live stamp strip, Apple Wallet web service + APNs updates, Google Wallet loyalty cards, web push |
 
 ## Documents
@@ -27,7 +28,7 @@ chmod 644 secrets/*
 docker compose up -d --build
 ```
 
-Caddy obtains the HTTPS certificate automatically. The app migrates the database and creates the owner account on first start. Open `https://your-domain/staff/login` to sign in.
+The stack runs Postgres, the app, Caddy and a nightly backup to `./backups` (30 days kept). Caddy obtains the HTTPS certificate automatically. The app migrates the database and creates the owner account on first start. Open `https://your-domain/staff/login` to sign in.
 
 ## Develop locally
 
@@ -51,14 +52,14 @@ bash server/scripts/make-test-certs.sh /tmp/odcerts
 TEST_DATABASE_URL=postgres://localhost/odonut_test TEST_CERT_DIR=/tmp/odcerts npm test
 ```
 
-13 end-to-end scenarios cover sign-up, stamping rules, rewards, redemption, promo codes, referrals, signed pass contents, the Apple Wallet web service with push, campaigns, automations, roles and data deletion.
+21 end-to-end scenarios cover sign-up, stamping rules, rewards, redemption, promo codes, referrals, signed pass contents, the Apple Wallet web service with push, campaigns, automations, roles and data deletion, plus tiers, SMS sign-in, the POS API, the near-reward nudge, the APNs client (against a local HTTP/2 TLS mock) and the Google Wallet client (mocked API).
 
 ## Layout
 
 ```
 server/            Fastify API (TypeScript)
   migrations/      SQL schema
-  src/routes/      customer, staff, admin, wallet, Apple web service
+  src/routes/      customer, staff, admin, wallet, Apple web service, POS
   src/services/    loyalty rules, campaigns, jobs, analytics, notify, apple/, google/
   assets/pass/     optional brand art for the pass
   test/            end-to-end tests
@@ -76,3 +77,5 @@ Dockerfile, docker-compose.yml, Caddyfile, .env.example
 - Friend's first purchase → **Friend Reward: Free Donut** for the referrer
 - Promo code `HELLODONUT` → Free Topping (500 uses)
 - Max 5 stamps per scan, 60 seconds between purchase stamps
+- Tiers (stamps in the last 365 days): **Sprinkle** 0, **Glazed** 20 (Glazed Member Treat), **Golden** 50 (Golden Member Box)
+- 1 to 2 stamps from a reward and no visit for 7 days → "almost there" nudge

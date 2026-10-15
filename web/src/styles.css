@@ -203,3 +203,32 @@ th, td { padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #ccc; }
 .dot.on { background: var(--ok); }
 input[type='color'] { width: 72px; height: 44px; padding: 4px; }
+
+/* ---- Tiers, inbox, poster ---- */
+.tier-pill { display: inline-block; background: var(--brand); color: #fff; border-radius: 999px; padding: 3px 12px; font-size: 13px; font-weight: 700; vertical-align: middle; letter-spacing: .3px; }
+.tier-box { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; margin: 12px 0; }
+.tier-box p { margin: 8px 0; }
+.row.between { justify-content: space-between; align-items: center; }
+.bar { height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; margin: 10px 0 6px; }
+.bar span { display: block; height: 100%; background: var(--brand); border-radius: 999px; }
+.inbox { list-style: none; padding: 0; margin: 0; }
+.inbox li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.inbox li p { margin: 4px 0; }
+.inbox time { font-size: 12px; color: var(--muted); }
+.promo-note { background: #FFF4D6; border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.prose { padding: 8px 4px 40px; line-height: 1.6; white-space: pre-wrap; }
+.pre { background: #1d1d1f; color: #f5f5f7; padding: 14px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
+.wrap-any { word-break: break-all; }
+.code-sm { font-family: ui-monospace, Menlo, monospace; }
+.poster { width: 190mm; min-height: 260mm; margin: 20px auto; padding: 18mm 14mm; border-radius: 16px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; box-shadow: var(--shadow); }
+.poster h2 { font-size: 44px; margin: 8px 0 0; }
+.poster p { font-size: 20px; margin: 0; max-width: 140mm; }
+.poster-qr { background: #fff; padding: 16px; border-radius: 16px; margin: 14px 0; }
+.poster-steps { font-weight: 700; }
+.poster-reward { font-size: 24px !important; font-weight: 800; }
+@media print {
+  .no-print { display: none !important; }
+  .admin, .admin-main { display: block; padding: 0; margin: 0; }
+  .poster { margin: 0 auto; box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { size: A4; margin: 10mm; }
+}

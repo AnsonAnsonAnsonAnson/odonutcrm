@@ -10,7 +10,8 @@ export interface ApnsResult { token: string; status: number; reason?: string }
  */
 export class Apns {
   private session: http2.ClientHttp2Session | null = null;
-  constructor(private apple: AppleConfig, private log: (m: string) => void) {}
+  // `ca` exists only so tests can point APNs at a local mock server.
+  constructor(private apple: AppleConfig, private log: (m: string) => void, private ca?: Buffer) {}
 
   private connect(): http2.ClientHttp2Session {
     if (this.session && !this.session.closed && !this.session.destroyed) return this.session;
@@ -18,6 +19,7 @@ export class Apns {
       cert: this.apple.cert,
       key: this.apple.key,
       passphrase: this.apple.keyPassphrase,
+      ...(this.ca ? { ca: this.ca } : {}),
     });
     s.on('error', (err) => this.log(`apns session error: ${err.message}`));
     s.on('goaway', () => s.close());

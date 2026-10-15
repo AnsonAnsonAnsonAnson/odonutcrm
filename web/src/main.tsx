@@ -21,6 +21,10 @@ const Rewards = lazy(() => import('./pages/admin/Rewards'));
 const Settings = lazy(() => import('./pages/admin/Settings'));
 const Stores = lazy(() => import('./pages/admin/Stores'));
 const Team = lazy(() => import('./pages/admin/Team'));
+const Tiers = lazy(() => import('./pages/admin/Tiers'));
+const Integrations = lazy(() => import('./pages/admin/Integrations'));
+const Poster = lazy(() => import('./pages/admin/Poster'));
+const Privacy = lazy(() => import('./pages/customer/Privacy'));
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -32,6 +36,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/" element={<Join />} />
               <Route path="/me" element={<Member />} />
               <Route path="/me/wallet" element={<AddToWallet />} />
+              <Route path="/privacy" element={<Privacy />} />
               <Route path="/staff/login" element={<StaffLogin />} />
               <Route path="/staff" element={<StaffScan />} />
               <Route path="/admin" element={<AdminLayout />}>
@@ -43,6 +48,9 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="settings" element={<Settings />} />
                 <Route path="stores" element={<Stores />} />
                 <Route path="team" element={<Team />} />
+                <Route path="tiers" element={<Tiers />} />
+                <Route path="integrations" element={<Integrations />} />
+                <Route path="poster" element={<Poster />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

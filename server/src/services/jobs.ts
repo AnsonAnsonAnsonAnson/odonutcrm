@@ -4,6 +4,7 @@ import { issueVoucher } from './loyalty.js';
 import type { Notifier } from './notify.js';
 import { getProgram } from './program.js';
 import { sendCampaign } from './campaigns.js';
+import { listTiers, reevaluateTier } from './tiers.js';
 
 const LOCK_ID = 77001;
 // Daily automations wait until this local hour so pushes never land overnight.
@@ -61,6 +62,52 @@ export async function runWinback(db: Db, notifier: Notifier, log: (m: string) =>
   return people.length;
 }
 
+/** Nudges members who are close to a free reward but have not been in for a while. */
+export async function runNearReward(db: Db, notifier: Notifier, log: (m: string) => void) {
+  const program = await getProgram(db);
+  if (!program.near_reward_enabled) return 0;
+  const people = await many<{ id: string; left: number }>(
+    db,
+    `SELECT c.id, ($1 - k.stamps)::int AS left FROM customers c JOIN cards k ON k.customer_id = c.id
+      WHERE c.marketing_opt_in AND k.stamps > 0 AND k.stamps >= $1 - $2
+        AND c.last_visit_at < now() - make_interval(days => $3)
+        AND (c.last_near_reward_at IS NULL OR c.last_near_reward_at < c.last_visit_at)
+      LIMIT 2000`,
+    [program.stamps_required, program.near_reward_within, program.near_reward_after_days],
+  );
+  for (const p of people) {
+    await db.query('UPDATE customers SET last_near_reward_at = now() WHERE id = $1', [p.id]);
+    await notifier.notify(p.id, {
+      kind: 'near_reward',
+      title: p.left === 1 ? 'Just 1 stamp to go' : `Just ${p.left} stamps to go`,
+      body: program.near_reward_message,
+    });
+  }
+  if (people.length) log(`near-reward nudges: ${people.length}`);
+  return people.length;
+}
+
+/** Daily tier check: members whose rolling stamp count dropped move down a tier (quietly). */
+export async function runTierReview(db: Db, notifier: Notifier, log: (m: string) => void) {
+  const program = await getProgram(db);
+  if (!program.tiers_enabled) return 0;
+  const tiers = await listTiers(db);
+  const people = await many<{ id: string }>(
+    db,
+    `SELECT c.id FROM customers c LEFT JOIN tiers t ON t.id = c.tier_id WHERE c.tier_id IS NULL OR t.min_stamps > 0`,
+  );
+  let changed = 0;
+  for (const p of people) {
+    const ch = await reevaluateTier(db, p.id, program.tier_window_days, tiers);
+    if (ch) {
+      changed++;
+      await notifier.passChanged(p.id);
+    }
+  }
+  if (changed) log(`tier changes: ${changed}`);
+  return changed;
+}
+
 export async function runExpiry(db: Db, notifier: Notifier, log: (m: string) => void) {
   const program = await getProgram(db);
   const expired = await db.query(`UPDATE vouchers SET status = 'expired' WHERE status = 'active' AND expires_at < now() RETURNING customer_id`);
@@ -100,6 +147,8 @@ export async function tick(db: Db, cfg: Config, notifier: Notifier, log: (m: str
       if (t.hour >= DAILY_HOUR && (await once(db, 'daily', t.date))) {
         await runBirthdays(db, cfg, notifier, log);
         await runWinback(db, notifier, log);
+        await runNearReward(db, notifier, log);
+        await runTierReview(db, notifier, log);
         await runExpiry(db, notifier, log);
         await db.query(`DELETE FROM otp_codes WHERE created_at < now() - interval '2 days'`);
         await db.query(`DELETE FROM apple_logs WHERE created_at < now() - interval '30 days'`);

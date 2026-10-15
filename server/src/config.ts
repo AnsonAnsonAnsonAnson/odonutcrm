@@ -52,6 +52,11 @@ const schema = z.object({
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().default('mailto:hello@example.com'),
 
+  // SMS sign-in codes (optional). TWILIO_FROM is a phone number or a Messaging Service SID (MG...).
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM: z.string().optional(),
+
   TZ_OFFSET_HOURS: z.coerce.number().default(8),
 });
 
@@ -136,5 +141,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     google,
     vapid,
     tzOffsetHours: c.TZ_OFFSET_HOURS,
+    twilio:
+      c.TWILIO_ACCOUNT_SID && c.TWILIO_AUTH_TOKEN && c.TWILIO_FROM
+        ? { accountSid: c.TWILIO_ACCOUNT_SID, authToken: c.TWILIO_AUTH_TOKEN, from: c.TWILIO_FROM }
+        : null,
   };
 }

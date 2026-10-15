@@ -20,6 +20,12 @@ interface Me {
   web_push: boolean;
   marketing_opt_in: boolean;
   card_updated_at: string;
+  tier: null | {
+    current: { name: string; perks: string; color: string } | null;
+    next: { name: string; perks: string; needed: number } | null;
+    stamps: number;
+    windowDays: number;
+  };
 }
 interface Voucher {
   code: string;
@@ -42,7 +48,8 @@ export default function Member() {
   const nav = useNavigate();
   const [me, setMe] = useState<Me | null>(null);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
-  const [modal, setModal] = useState<null | 'card' | 'benefits' | 'promo' | 'history' | 'voucher' | 'refer' | 'settings'>(null);
+  const [modal, setModal] = useState<null | 'card' | 'benefits' | 'promo' | 'history' | 'voucher' | 'refer' | 'settings' | 'inbox'>(null);
+  const [messages, setMessages] = useState<{ title: string; body: string; created_at: string }[] | null>(null);
   const [voucher, setVoucher] = useState<Voucher | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [promo, setPromo] = useState('');
@@ -80,6 +87,11 @@ export default function Member() {
   async function openHistory() {
     setModal('history');
     setHistory(await api('/api/me/history'));
+  }
+
+  async function openInbox() {
+    setModal('inbox');
+    setMessages(await api('/api/me/notifications'));
   }
 
   async function applyPromo(e: FormEvent) {
@@ -153,6 +165,24 @@ export default function Member() {
         </div>
       </section>
 
+      {me.tier?.current && (
+        <section className="tier-box">
+          <div className="row between">
+            <span className="tier-pill" style={{ background: me.tier.current.color }}>{me.tier.current.name}</span>
+            <small className="muted">{t('tier')}</small>
+          </div>
+          {me.tier.current.perks && <p>{me.tier.current.perks}</p>}
+          {me.tier.next ? (
+            <>
+              <div className="bar"><span style={{ width: `${Math.min(100, (me.tier.stamps / (me.tier.stamps + me.tier.next.needed)) * 100)}%` }} /></div>
+              <small><b>{me.tier.next.needed}</b> {t('tierNext')} <b>{me.tier.next.name}</b>. {t('tierWindow').replace('{d}', String(me.tier.windowDays))}</small>
+            </>
+          ) : (
+            <small>{t('tierTop')}</small>
+          )}
+        </section>
+      )}
+
       {!inWallet && <WalletButtons compact />}
       {inWallet && <p className="ok-note">✓ {t('walletAdded')}</p>}
 
@@ -190,6 +220,7 @@ export default function Member() {
       </div>
 
       <div className="tiles">
+        <button className="tile" onClick={openInbox}><span className="tile-icon">✉</span>{t('inbox')}</button>
         <button className="tile" onClick={() => setModal('refer')}><span className="tile-icon">♥</span>{t('refer')}</button>
         {cfg.vapidPublicKey && (
           <button className="tile" onClick={enablePush} disabled={me.web_push}>
@@ -258,6 +289,24 @@ export default function Member() {
         </ul>
       </Modal>
 
+      <Modal open={modal === 'inbox'} onClose={() => setModal(null)} title={t('inbox')}>
+        {!messages ? (
+          <div className="center"><Spinner /></div>
+        ) : messages.length === 0 ? (
+          <p className="muted">{t('noMessages')}</p>
+        ) : (
+          <ul className="inbox">
+            {messages.map((m, i) => (
+              <li key={i}>
+                <b>{m.title}</b>
+                <p>{m.body}</p>
+                <time>{fmtDate(m.created_at, true)}</time>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
+
       <Modal open={modal === 'refer'} onClose={() => setModal(null)} title={t('refer')}>
         <p>{t('referBody')}</p>
         <p className="code">{me.referral_code}</p>
@@ -290,6 +339,7 @@ export default function Member() {
           />
           {t('marketing')}
         </label>
+        {cfg.privacyPolicy && <p><a href="/privacy">{t('privacy')}</a></p>}
         <div className="stack">
           <button className="btn" onClick={logout}>{t('logout')}</button>
           <button className="btn danger-link" onClick={deleteAccount}>{t('deleteAccount')}</button>

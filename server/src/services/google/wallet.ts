@@ -58,6 +58,7 @@ export class GoogleWallet {
         uris: [{ uri: memberCenterUrl(this.publicUrl, data), description: 'Member Center', id: 'member_center' }],
       },
       textModulesData: [
+        ...(customer.tier ? [{ id: 'tier', header: 'Tier', body: customer.tier }] : []),
         { id: 'how', header: 'How it works', body: `Collect ${program.stamps_required} stamps to earn a reward.` },
       ],
       locations: data.stores.map((s) => ({ latitude: s.latitude, longitude: s.longitude })),

@@ -58,6 +58,10 @@ docker compose run --rm app node -e "const w=require('web-push');const k=w.gener
 
 Any SMTP service works. Example with Resend: `SMTP_HOST=smtp.resend.com`, `SMTP_PORT=465`, `SMTP_USER=resend`, `SMTP_PASS=<API key>`, `SMTP_FROM=O! Donut <club@odonut.hk>`. Add the provider's SPF and DKIM records to your domain so codes reach the inbox.
 
+## 4b. SMS sign-in (optional)
+
+Create a Twilio account, buy or register a sender, then set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM` (a Twilio number like `+1…` or an approved alphanumeric sender such as `ODONUT`). Leave them blank to keep email-only sign-in. Only existing members can request SMS codes.
+
 ## 5. Your brand art
 
 Drop optional files into `server/assets/pass/`: `logo.png`, `icon.png`, `stamp-on.png`, `stamp-off.png` (details in that folder's README). Then set colours in **Program & automations**. Every installed pass picks up the change the next time it refreshes.
@@ -73,4 +77,5 @@ Drop optional files into `server/assets/pass/`: `logo.png`, `icon.png`, `stamp-o
 | Google issuer ID + service account JSON | `.env` + `./secrets/` |
 | VAPID keys | `.env` |
 | SMTP credentials | `.env` |
+| Twilio SID, token and sender (optional) | `.env` |
 | Logo, icon, stamp art, colours | `server/assets/pass/` and the admin |

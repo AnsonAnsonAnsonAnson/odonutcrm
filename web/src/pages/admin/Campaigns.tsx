@@ -12,6 +12,7 @@ const SEGMENTS: Record<string, string> = {
   near_reward: 'Close to a free reward',
   birthday_month: 'Birthday this month',
   tag: 'Has a tag',
+  tier: 'In a membership tier',
 };
 
 const IDEAS = [
@@ -25,20 +26,22 @@ export default function Campaigns() {
   const me = useAdminMe();
   const [list, setList] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
-  const [f, setF] = useState({ name: '', message: '', templateId: '', type: 'all', days: 30, within: 2, tag: '', optInOnly: true, when: '' });
+  const [f, setF] = useState({ name: '', message: '', templateId: '', type: 'all', days: 30, within: 2, tag: '', tierId: '', optInOnly: true, when: '' });
+  const [tiers, setTiers] = useState<any[]>([]);
   const [count, setCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = () => api('/api/admin/campaigns').then(setList);
   useEffect(() => {
     load();
     api('/api/admin/templates').then((t) => setTemplates(t.filter((x: any) => x.active)));
+    api('/api/admin/tiers').then(setTiers).catch(() => {});
     const id = setInterval(load, 5000);
     return () => clearInterval(id);
   }, []);
-  const segment = { type: f.type, days: f.days, within: f.within, tag: f.tag || undefined, optInOnly: f.optInOnly };
+  const segment = { type: f.type, days: f.days, within: f.within, tag: f.tag || undefined, tierId: f.type === 'tier' && f.tierId ? f.tierId : undefined, optInOnly: f.optInOnly };
   useEffect(() => {
     api('/api/admin/campaigns/preview', { body: segment }).then((r) => setCount(r.recipients)).catch(() => setCount(null));
-  }, [f.type, f.days, f.within, f.tag, f.optInOnly]);
+  }, [f.type, f.days, f.within, f.tag, f.tierId, f.optInOnly]);
 
   async function create(e: FormEvent) {
     e.preventDefault();
@@ -85,6 +88,14 @@ export default function Campaigns() {
             </label>
             {['active', 'inactive', 'new'].includes(f.type) && <label>Days<input type="number" min={1} value={f.days} onChange={(e) => setF({ ...f, days: Number(e.target.value) })} /></label>}
             {f.type === 'near_reward' && <label>Within N stamps<input type="number" min={1} max={19} value={f.within} onChange={(e) => setF({ ...f, within: Number(e.target.value) })} /></label>}
+            {f.type === 'tier' && (
+              <label>Tier
+                <select required value={f.tierId} onChange={(e) => setF({ ...f, tierId: e.target.value })}>
+                  <option value="">Choose…</option>
+                  {tiers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
+            )}
             {f.type === 'tag' && <label>Tag<input value={f.tag} onChange={(e) => setF({ ...f, tag: e.target.value })} /></label>}
             <label>Attach voucher
               <select value={f.templateId} onChange={(e) => setF({ ...f, templateId: e.target.value })}>

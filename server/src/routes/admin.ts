@@ -8,6 +8,8 @@ import { SegmentSchema, countSegment, sendCampaign } from '../services/campaigns
 import { addStamps, customerHistory, customerVouchers, issueVoucher } from '../services/loyalty.js';
 import { getProgram } from '../services/program.js';
 import { afterStamp, staffGuard } from './staff.js';
+import { newApiKey } from './pos.js';
+import { listTiers } from '../services/tiers.js';
 
 const uuid = z.string().uuid();
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -56,9 +58,9 @@ export async function adminRoutes(app: FastifyInstance) {
     const rows = await many(
       db,
       `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.created_at, c.last_visit_at, c.visit_count,
-              c.marketing_opt_in, c.tags, k.stamps, k.rewards_earned,
+              c.marketing_opt_in, c.tags, k.stamps, k.rewards_earned, t.name AS tier,
               EXISTS (SELECT 1 FROM apple_registrations r WHERE r.serial_number = k.serial_number) AS apple_saved, k.google_saved
-         FROM customers c JOIN cards k ON k.customer_id = c.id
+         FROM customers c JOIN cards k ON k.customer_id = c.id LEFT JOIN tiers t ON t.id = c.tier_id
         WHERE ${where} ORDER BY ${order} LIMIT 50 OFFSET $${params.length}`,
       params,
     );
@@ -87,9 +89,10 @@ export async function adminRoutes(app: FastifyInstance) {
       `SELECT c.*, k.id AS card_id, k.serial_number, k.stamps, k.lifetime_stamps, k.rewards_earned, k.google_saved,
               EXISTS (SELECT 1 FROM apple_registrations r WHERE r.serial_number = k.serial_number) AS apple_saved,
               EXISTS (SELECT 1 FROM web_push_subscriptions w WHERE w.customer_id = c.id) AS web_push,
-              rc.first_name || ' ' || rc.last_name AS referred_by_name,
+              rc.first_name || ' ' || rc.last_name AS referred_by_name, tr.name AS tier,
               (SELECT count(*)::int FROM customers x WHERE x.referred_by = c.id) AS referrals
          FROM customers c JOIN cards k ON k.customer_id = c.id LEFT JOIN customers rc ON rc.id = c.referred_by
+         LEFT JOIN tiers tr ON tr.id = c.tier_id
         WHERE c.id = $1`,
       [id],
     );
@@ -310,6 +313,7 @@ export async function adminRoutes(app: FastifyInstance) {
         googleWallet: !!cfg.google,
         webPush: !!cfg.vapid,
         email: !!cfg.smtp,
+        sms: !!cfg.twilio,
         publicUrl: cfg.publicUrl,
         httpsReady: cfg.publicUrl.startsWith('https://'),
       },
@@ -340,6 +344,14 @@ export async function adminRoutes(app: FastifyInstance) {
         referral_template_id: uuid.nullable(),
         expiry_reminder_days: z.number().int().min(0).max(30),
         terms: z.string().trim().min(1).max(2000),
+        tiers_enabled: z.boolean(),
+        tier_window_days: z.number().int().min(30).max(3650),
+        near_reward_enabled: z.boolean(),
+        near_reward_within: z.number().int().min(1).max(5),
+        near_reward_after_days: z.number().int().min(1).max(90),
+        near_reward_message: z.string().trim().min(1).max(240),
+        welcome_email_enabled: z.boolean(),
+        privacy_policy: z.string().max(20000),
       })
       .partial()
       .parse(req.body);
@@ -357,6 +369,74 @@ export async function adminRoutes(app: FastifyInstance) {
     await owner(req);
     if (!notifier.google) throw new HttpError(400, 'Google Wallet is not configured');
     await notifier.google.upsertClass(await getProgram(db));
+    return { ok: true };
+  });
+
+  // ---------- Tiers ----------
+  const tierBody = z.object({
+    name: z.string().trim().min(1).max(30),
+    minStamps: z.number().int().min(0).max(10000),
+    perks: z.string().trim().max(300).default(''),
+    upgradeTemplateId: uuid.nullable().default(null),
+    color: hex.default('#3B1F14'),
+  });
+  app.get('/tiers', async (req) => {
+    await manager(req);
+    return many(
+      db,
+      `SELECT t.*, vt.title AS upgrade_title, (SELECT count(*)::int FROM customers c WHERE c.tier_id = t.id) AS members
+         FROM tiers t LEFT JOIN voucher_templates vt ON vt.id = t.upgrade_template_id ORDER BY t.min_stamps`,
+    );
+  });
+  app.post('/tiers', async (req) => {
+    await owner(req);
+    const b = tierBody.parse(req.body);
+    return one(db, `INSERT INTO tiers (name, min_stamps, perks, upgrade_template_id, color) VALUES ($1,$2,$3,$4,$5) RETURNING *`, [
+      b.name, b.minStamps, b.perks, b.upgradeTemplateId, b.color,
+    ]);
+  });
+  app.patch('/tiers/:id', async (req) => {
+    await owner(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const b = tierBody.parse(req.body);
+    return one(db, `UPDATE tiers SET name=$2, min_stamps=$3, perks=$4, upgrade_template_id=$5, color=$6 WHERE id=$1 RETURNING *`, [
+      id, b.name, b.minStamps, b.perks, b.upgradeTemplateId, b.color,
+    ]);
+  });
+  app.delete('/tiers/:id', async (req) => {
+    await owner(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    const t = await one<{ min_stamps: number }>(db, 'SELECT min_stamps FROM tiers WHERE id = $1', [id]);
+    if (t?.min_stamps === 0 && (await listTiers(db)).length > 1) throw new HttpError(400, 'Delete the higher tiers first, or rename the starting tier instead');
+    await db.query('DELETE FROM tiers WHERE id = $1', [id]);
+    return { ok: true };
+  });
+
+  // ---------- POS API keys ----------
+  app.get('/api-keys', async (req) => {
+    await owner(req);
+    return many(
+      db,
+      `SELECT k.id, k.name, k.prefix, k.created_at, k.last_used_at, k.revoked_at, s.name AS store_name
+         FROM api_keys k LEFT JOIN stores s ON s.id = k.store_id ORDER BY k.created_at DESC`,
+    );
+  });
+  app.post('/api-keys', async (req) => {
+    const s = await owner(req);
+    const b = z.object({ name: z.string().trim().min(1).max(60), storeId: uuid.nullable().default(null) }).parse(req.body);
+    const k = newApiKey();
+    const row = await one(
+      db,
+      `INSERT INTO api_keys (name, prefix, key_hash, store_id, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id, name, prefix, created_at`,
+      [b.name, k.prefix, k.hash, b.storeId, s.id],
+    );
+    // The full key is shown once and never stored.
+    return { ...row, key: k.key };
+  });
+  app.delete('/api-keys/:id', async (req) => {
+    await owner(req);
+    const { id } = z.object({ id: uuid }).parse(req.params);
+    await db.query('UPDATE api_keys SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL', [id]);
     return { ok: true };
   });
 

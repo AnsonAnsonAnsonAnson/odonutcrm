@@ -57,6 +57,9 @@ export function passJson(cfg: { publicUrl: string; passTypeId: string; teamId: s
     sharingProhibited: true,
     storeCard: {
       headerFields: [
+        ...(customer.tier
+          ? [{ key: 'tier', label: 'TIER', value: customer.tier, changeMessage: 'You are now %@!', textAlignment: 'PKTextAlignmentRight' }]
+          : []),
         {
           key: 'stamps',
           label: 'STAMPS',

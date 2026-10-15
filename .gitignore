@@ -6,3 +6,4 @@ dist/
 certs/
 secrets/
 certs-test/
+backups/

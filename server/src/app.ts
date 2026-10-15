@@ -9,6 +9,8 @@ import type { Config } from './config.js';
 import type { Db } from './db.js';
 import { HttpError, Sessions } from './lib/auth.js';
 import { createMailer, type Mailer } from './lib/mailer.js';
+import { createSms, type SmsSender } from './lib/sms.js';
+import { posRoutes } from './routes/pos.js';
 import { Notifier } from './services/notify.js';
 import { customerRoutes } from './routes/customer.js';
 import { walletRoutes } from './routes/wallet.js';
@@ -21,6 +23,7 @@ export interface Services {
   db: Db;
   sessions: Sessions;
   mailer: Mailer;
+  sms: SmsSender;
   notifier: Notifier;
   log: (m: string) => void;
 }
@@ -31,7 +34,11 @@ declare module 'fastify' {
   }
 }
 
-export async function buildApp(cfg: Config, db: Db, opts: { logger?: boolean; mailer?: Mailer } = {}): Promise<FastifyInstance> {
+export async function buildApp(
+  cfg: Config,
+  db: Db,
+  opts: { logger?: boolean; mailer?: Mailer; sms?: SmsSender } = {},
+): Promise<FastifyInstance> {
   const app = Fastify({
     logger: opts.logger ?? true,
     trustProxy: true,
@@ -43,6 +50,7 @@ export async function buildApp(cfg: Config, db: Db, opts: { logger?: boolean; ma
     db,
     sessions: new Sessions(cfg.secret, cfg.publicUrl.startsWith('https://')),
     mailer: opts.mailer ?? createMailer(cfg, log),
+    sms: opts.sms ?? createSms(cfg, log),
     notifier: new Notifier(db, cfg, log),
     log,
   };
@@ -86,6 +94,7 @@ export async function buildApp(cfg: Config, db: Db, opts: { logger?: boolean; ma
   await app.register(appleWebServiceRoutes, { prefix: '/api/wallet/apple' });
   await app.register(staffRoutes, { prefix: '/api/staff' });
   await app.register(adminRoutes, { prefix: '/api/admin' });
+  await app.register(posRoutes, { prefix: '/api/pos/v1' });
 
   // Serve the built web app (customer, staff and admin SPA) with client-side routing fallback.
   const webDist = resolve(cfg.webDist);

@@ -21,9 +21,9 @@ async function customerSummary(svc: Services, customerId: string) {
   const c = await one(
     svc.db,
     `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.visit_count, c.last_visit_at, c.created_at, c.birthday,
-            k.id AS card_id, k.qr_token, k.stamps, k.lifetime_stamps, k.rewards_earned,
+            k.id AS card_id, k.qr_token, k.stamps, k.lifetime_stamps, k.rewards_earned, t.name AS tier,
             (SELECT stamps_required FROM program WHERE id = 1) AS stamps_required
-       FROM customers c JOIN cards k ON k.customer_id = c.id WHERE c.id = $1`,
+       FROM customers c JOIN cards k ON k.customer_id = c.id LEFT JOIN tiers t ON t.id = c.tier_id WHERE c.id = $1`,
     [customerId],
   );
   const vouchers = await many(
@@ -38,6 +38,13 @@ async function customerSummary(svc: Services, customerId: string) {
 /** After a stamp, refresh wallets and send any reward / referral messages. Never fails the request. */
 export async function afterStamp(svc: Services, r: StampResult) {
   try {
+    if (r.tier?.upgraded && r.tier.to) {
+      await svc.notifier.notify(r.customerId, {
+        kind: 'tier',
+        title: `Welcome to ${r.tier.to.name}!`,
+        body: r.tier.voucher ? `${r.tier.voucher.title} is waiting in your Member Center.` : r.tier.to.perks || 'Thanks for being a regular.',
+      });
+    }
     if (r.rewards.length) {
       const title = r.rewards.length > 1 ? `${r.rewards.length} rewards unlocked!` : 'Reward unlocked!';
       await svc.notifier.notify(r.customerId, { kind: 'reward', title, body: `${r.rewards[0].title} is ready in your Member Center.` });
@@ -88,7 +95,7 @@ export async function staffRoutes(app: FastifyInstance) {
   app.get('/me', async (req) => {
     const s = await staff(req);
     const store = s.storeId ? await one(db, 'SELECT id, name FROM stores WHERE id = $1', [s.storeId]) : null;
-    const program = await one(db, 'SELECT stamps_required, max_stamps_per_scan, brand_name FROM program WHERE id = 1');
+    const program = await one(db, 'SELECT stamps_required, max_stamps_per_scan, brand_name, background_color, foreground_color FROM program WHERE id = 1');
     return { ...s, store, program };
   });
 
@@ -151,6 +158,7 @@ export async function staffRoutes(app: FastifyInstance) {
       stamps: r.card.stamps,
       stampsRequired: r.stampsRequired,
       rewards: r.rewards.map((v) => ({ title: v.title, code: v.code })),
+      tierUpgrade: r.tier?.upgraded && r.tier.to ? r.tier.to.name : null,
     };
   });
 

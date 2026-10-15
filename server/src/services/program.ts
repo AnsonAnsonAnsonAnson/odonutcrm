@@ -22,6 +22,14 @@ export interface Program {
   referral_template_id: string | null;
   expiry_reminder_days: number;
   terms: string;
+  tiers_enabled: boolean;
+  tier_window_days: number;
+  near_reward_enabled: boolean;
+  near_reward_within: number;
+  near_reward_after_days: number;
+  near_reward_message: string;
+  welcome_email_enabled: boolean;
+  privacy_policy: string;
   updated_at: Date;
 }
 
@@ -49,7 +57,7 @@ export interface CardRow {
 
 export interface PassData {
   card: CardRow;
-  customer: { id: string; first_name: string; last_name: string; email: string; locale: string };
+  customer: { id: string; first_name: string; last_name: string; email: string; locale: string; tier: string | null };
   activeVouchers: number;
   stores: { name: string; latitude: number; longitude: number; relevant_text: string | null }[];
 }
@@ -59,7 +67,13 @@ export async function loadPassData(q: Queryable, by: { serial?: string; customer
     ? await one<CardRow>(q, 'SELECT * FROM cards WHERE serial_number = $1', [by.serial])
     : await one<CardRow>(q, 'SELECT * FROM cards WHERE customer_id = $1', [by.customerId]);
   if (!card) return null;
-  const customer = await one(q, 'SELECT id, first_name, last_name, email, locale FROM customers WHERE id = $1', [card.customer_id]);
+  const customer = await one(
+    q,
+    `SELECT c.id, c.first_name, c.last_name, c.email, c.locale,
+            CASE WHEN p.tiers_enabled THEN t.name END AS tier
+       FROM customers c CROSS JOIN program p LEFT JOIN tiers t ON t.id = c.tier_id WHERE c.id = $1`,
+    [card.customer_id],
+  );
   const v = await one<{ n: number }>(
     q,
     `SELECT count(*)::int AS n FROM vouchers WHERE customer_id = $1 AND status = 'active' AND expires_at > now()`,

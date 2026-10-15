@@ -1,0 +1,51 @@
+# Production-style stack: Postgres + the app + Caddy (automatic HTTPS from Let's Encrypt).
+# 1. cp .env.example .env and fill it in   2. point your domain's DNS at this server
+# 3. put Apple/Google files in ./secrets   4. docker compose up -d --build
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: odonut
+      POSTGRES_USER: odonut
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odonut -d odonut"]
+      interval: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://odonut:${POSTGRES_PASSWORD}@db:5432/odonut
+    volumes:
+      - ./secrets:/secrets:ro
+      # Optional brand art for the pass: icon.png, logo.png, stamp-on.png, stamp-off.png
+      - ./server/assets/pass:/app/server/assets/pass:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  caddy_data:

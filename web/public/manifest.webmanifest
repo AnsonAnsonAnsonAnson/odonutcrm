@@ -1,0 +1,13 @@
+{
+  "name": "O! Donut Club",
+  "short_name": "O! Donut",
+  "start_url": "/me",
+  "display": "standalone",
+  "background_color": "#FFF7F2",
+  "theme_color": "#F25C8A",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

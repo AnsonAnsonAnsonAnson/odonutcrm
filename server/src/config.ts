@@ -1,0 +1,140 @@
+import { readFileSync, existsSync } from 'node:fs';
+import { z } from 'zod';
+
+const bool = z
+  .string()
+  .optional()
+  .transform((v) => v === 'true' || v === '1');
+
+const schema = z.object({
+  NODE_ENV: z.string().default('development'),
+  PORT: z.coerce.number().default(8080),
+  HOST: z.string().default('0.0.0.0'),
+  // Public https origin customers and Apple/Google reach, e.g. https://loyalty.odonut.hk
+  PUBLIC_URL: z.string().url().default('http://localhost:8080'),
+  DATABASE_URL: z.string().default('postgres://postgres:postgres@localhost:5432/odonut'),
+  // Long random string; signs sessions and hashes OTPs.
+  APP_SECRET: z.string().min(32, 'APP_SECRET must be at least 32 characters'),
+  RUN_JOBS: bool.default(true),
+  WEB_DIST: z.string().default('../web/dist'),
+
+  // First owner account, created on boot if no staff exist.
+  ADMIN_EMAIL: z.string().optional(),
+  ADMIN_PASSWORD: z.string().optional(),
+
+  // Email (OTP + notifications). Without SMTP_HOST, OTP codes are written to the server log (dev only).
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().default('O! Donut <hello@example.com>'),
+
+  // Apple Wallet. Provide either *_FILE paths or base64 *_B64 values.
+  APPLE_PASS_TYPE_ID: z.string().optional(),
+  APPLE_TEAM_ID: z.string().optional(),
+  APPLE_PASS_CERT_FILE: z.string().optional(),
+  APPLE_PASS_CERT_B64: z.string().optional(),
+  APPLE_PASS_KEY_FILE: z.string().optional(),
+  APPLE_PASS_KEY_B64: z.string().optional(),
+  APPLE_PASS_KEY_PASSPHRASE: z.string().optional(),
+  APPLE_WWDR_FILE: z.string().optional(),
+  APPLE_WWDR_B64: z.string().optional(),
+  APNS_HOST: z.string().default('https://api.push.apple.com'),
+
+  // Google Wallet
+  GOOGLE_ISSUER_ID: z.string().optional(),
+  GOOGLE_SERVICE_ACCOUNT_FILE: z.string().optional(),
+  GOOGLE_SERVICE_ACCOUNT_B64: z.string().optional(),
+  GOOGLE_CLASS_SUFFIX: z.string().default('odonut_stamp_card'),
+
+  // Web push (VAPID). Generate with `npm run vapid -w server`.
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:hello@example.com'),
+
+  TZ_OFFSET_HOURS: z.coerce.number().default(8),
+});
+
+function readSecret(file?: string, b64?: string): Buffer | undefined {
+  if (b64) return Buffer.from(b64, 'base64');
+  if (!file) return undefined;
+  if (!existsSync(file)) throw new Error(`Configured file not found: ${file}`);
+  try {
+    return readFileSync(file);
+  } catch (err: any) {
+    // Typical in Docker: secret files owned by root with mode 600, app runs as uid 1000.
+    throw new Error(`Cannot read ${file} (${err.code}). Make it readable by the app user, e.g. chmod 644 or chown 1000.`);
+  }
+}
+
+export type Config = ReturnType<typeof loadConfig>;
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
+  const parsed = schema.safeParse(env);
+  if (!parsed.success) {
+    const msg = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n');
+    throw new Error(`Invalid configuration:\n${msg}`);
+  }
+  const c = parsed.data;
+  const appleCert = readSecret(c.APPLE_PASS_CERT_FILE, c.APPLE_PASS_CERT_B64);
+  const appleKey = readSecret(c.APPLE_PASS_KEY_FILE, c.APPLE_PASS_KEY_B64);
+  const wwdr = readSecret(c.APPLE_WWDR_FILE, c.APPLE_WWDR_B64);
+  const googleSa = readSecret(c.GOOGLE_SERVICE_ACCOUNT_FILE, c.GOOGLE_SERVICE_ACCOUNT_B64);
+
+  const apple =
+    c.APPLE_PASS_TYPE_ID && c.APPLE_TEAM_ID && appleCert && appleKey && wwdr
+      ? {
+          passTypeId: c.APPLE_PASS_TYPE_ID,
+          teamId: c.APPLE_TEAM_ID,
+          cert: appleCert,
+          key: appleKey,
+          keyPassphrase: c.APPLE_PASS_KEY_PASSPHRASE,
+          wwdr,
+          apnsHost: c.APNS_HOST,
+        }
+      : null;
+
+  let google: null | {
+    issuerId: string;
+    classId: string;
+    clientEmail: string;
+    privateKey: string;
+  } = null;
+  if (c.GOOGLE_ISSUER_ID && googleSa) {
+    const sa = JSON.parse(googleSa.toString('utf8'));
+    google = {
+      issuerId: c.GOOGLE_ISSUER_ID,
+      classId: `${c.GOOGLE_ISSUER_ID}.${c.GOOGLE_CLASS_SUFFIX}`,
+      clientEmail: sa.client_email,
+      privateKey: sa.private_key,
+    };
+  }
+
+  const vapid =
+    c.VAPID_PUBLIC_KEY && c.VAPID_PRIVATE_KEY
+      ? { publicKey: c.VAPID_PUBLIC_KEY, privateKey: c.VAPID_PRIVATE_KEY, subject: c.VAPID_SUBJECT }
+      : null;
+
+  const smtp = c.SMTP_HOST
+    ? { host: c.SMTP_HOST, port: c.SMTP_PORT, user: c.SMTP_USER, pass: c.SMTP_PASS, from: c.SMTP_FROM }
+    : null;
+
+  return {
+    env: c.NODE_ENV,
+    isProd: c.NODE_ENV === 'production',
+    port: c.PORT,
+    host: c.HOST,
+    publicUrl: c.PUBLIC_URL.replace(/\/$/, ''),
+    databaseUrl: c.DATABASE_URL,
+    secret: c.APP_SECRET,
+    runJobs: c.RUN_JOBS,
+    webDist: c.WEB_DIST,
+    adminEmail: c.ADMIN_EMAIL,
+    adminPassword: c.ADMIN_PASSWORD,
+    smtp,
+    apple,
+    google,
+    vapid,
+    tzOffsetHours: c.TZ_OFFSET_HOURS,
+  };
+}

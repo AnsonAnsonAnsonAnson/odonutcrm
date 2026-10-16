@@ -27,7 +27,7 @@ const schema = z.object({
   SMTP_PORT: z.coerce.number().default(587),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().default('O! Donut <hello@example.com>'),
+  SMTP_FROM: z.string().optional(),
 
   // Apple Wallet. Provide either *_FILE paths or base64 *_B64 values.
   APPLE_PASS_TYPE_ID: z.string().optional(),
@@ -70,6 +70,19 @@ function readSecret(file?: string, b64?: string): Buffer | undefined {
     // Typical in Docker: secret files owned by root with mode 600, app runs as uid 1000.
     throw new Error(`Cannot read ${file} (${err.code}). Make it readable by the app user, e.g. chmod 644 or chown 1000.`);
   }
+}
+
+const EMAIL = /[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+/;
+
+/**
+ * SMTP_FROM as typed into a hosting dashboard is easy to get slightly wrong (HTML-escaped brackets,
+ * a bare address, nothing at all). Normalise it to `Name <address>`, falling back to SMTP_USER.
+ */
+export function senderAddress(from: string | undefined, user: string | undefined): string {
+  const raw = (from ?? '').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&amp;/gi, '&').trim().replace(/^["']|["']$/g, '');
+  const address = EMAIL.exec(raw)?.[0] ?? EMAIL.exec(user ?? '')?.[0] ?? 'hello@example.com';
+  const name = raw.replace(/<[^>]*>/g, '').replace(EMAIL, '').replace(/["<>]/g, '').trim() || 'O! Donut';
+  return `${name} <${address}>`;
 }
 
 export interface AppleWalletConfig {
@@ -136,7 +149,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       : null;
 
   const smtp = c.SMTP_HOST
-    ? { host: c.SMTP_HOST, port: c.SMTP_PORT, user: c.SMTP_USER, pass: c.SMTP_PASS, from: c.SMTP_FROM }
+    ? { host: c.SMTP_HOST.trim(), port: c.SMTP_PORT, user: c.SMTP_USER?.trim(), pass: c.SMTP_PASS?.replace(/\s+/g, ''), from: senderAddress(c.SMTP_FROM, c.SMTP_USER) }
     : null;
 
   return {

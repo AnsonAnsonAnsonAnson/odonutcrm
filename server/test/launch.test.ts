@@ -170,3 +170,13 @@ test('the admin email check says plainly what is wrong', async () => {
   assert.match(explainMailError({ code: 'EAUTH', response: '535 5.7.8 Username and Password not accepted' }), /app password.*535/s);
   assert.match(explainMailError({ code: 'ETIMEDOUT', message: 'Connection timeout' }), /smtp\.gmail\.com and 587/);
 });
+
+test('the email sender setting tolerates how people type it into a dashboard', async () => {
+  const { senderAddress } = await import('../src/config.js');
+  assert.equal(senderAddress('O! Donut &lt;shop@gmail.com&gt;', undefined), 'O! Donut <shop@gmail.com>');
+  assert.equal(senderAddress('shop@gmail.com', undefined), 'O! Donut <shop@gmail.com>');
+  assert.equal(senderAddress(undefined, 'shop@gmail.com'), 'O! Donut <shop@gmail.com>');
+  const c = loadConfig({ APP_SECRET: 'z'.repeat(40), DATABASE_URL: 'postgres://x/y', SMTP_HOST: 'smtp.gmail.com', SMTP_USER: 'shop@gmail.com', SMTP_PASS: 'abcd efgh ijkl mnop' } as any);
+  assert.equal(c.smtp?.pass, 'abcdefghijklmnop');
+  assert.equal(c.smtp?.from, 'O! Donut <shop@gmail.com>');
+});

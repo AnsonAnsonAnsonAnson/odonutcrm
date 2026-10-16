@@ -11,6 +11,7 @@ import { afterStamp, staffGuard } from './staff.js';
 import { newApiKey } from './pos.js';
 import { listTiers } from '../services/tiers.js';
 import { checkAppleCert } from '../lib/certs.js';
+import { explainMailError } from '../lib/mailer.js';
 import { appleSetupStatus, createSigningRequest, installCertificate, removeStoredCredentials } from '../services/apple/credentials.js';
 
 const uuid = z.string().uuid();
@@ -305,6 +306,21 @@ export async function adminRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // ---------- Email check ----------
+  app.post('/test-email', async (req) => {
+    const me = await manager(req);
+    const u = await one<{ email: string }>(db, 'SELECT email FROM staff_users WHERE id = $1', [me.id]);
+    if (!cfg.smtp) {
+      throw new HttpError(409, 'Email is not set up yet: the site has no SMTP_HOST setting. Check the setting names in Netlify (or .env), then deploy or restart again.');
+    }
+    try {
+      await svc.mailer.send(u!.email, 'O! Donut test email', 'This is a test from your O! Donut Club admin page. Email is working.');
+    } catch (err) {
+      throw new HttpError(502, explainMailError(err));
+    }
+    return { ok: true, to: u!.email };
+  });
+
   // ---------- Apple Wallet setup wizard (owner) ----------
   app.get('/apple-wallet', async (req) => {
     await owner(req);
@@ -340,6 +356,8 @@ export async function adminRoutes(app: FastifyInstance) {
         googleWallet: !!cfg.google,
         webPush: !!cfg.vapid,
         email: !!cfg.smtp,
+        // 'log' = test mode (codes written to the server log), 'off' = production without SMTP.
+        emailMode: cfg.smtp ? 'smtp' : cfg.isProd ? 'off' : 'log',
         sms: !!cfg.twilio,
         appleCert: cfg.apple ? checkAppleCert(cfg.apple) : null,
         publicUrl: cfg.publicUrl,

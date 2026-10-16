@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { one, many, withTx } from '../db.js';
 import { HttpError, CUSTOMER_COOKIE } from '../lib/auth.js';
+import { explainMailError } from '../lib/mailer.js';
 import { hmac, otpCode, safeEqual } from '../lib/crypto.js';
 import { applyPromoCode, createCustomer, customerHistory, customerVouchers } from '../services/loyalty.js';
 import { activeMultiplier, getProgram } from '../services/program.js';
@@ -83,13 +84,20 @@ export async function customerRoutes(app: FastifyInstance) {
       if (channel === 'sms') {
         await sms.send(body.phone!, zh ? `${p.brand_name} 驗證碼：${code}（10 分鐘內有效）` : `${p.brand_name} code: ${code} (valid 10 minutes)`);
       } else {
-        await mailer.send(
-          body.email!,
-          zh ? `${p.brand_name} 驗證碼：${code}` : `Your ${p.brand_name} code: ${code}`,
-          zh
-            ? `你的驗證碼是 ${code}，10 分鐘內有效。如非本人操作，請忽略此電郵。`
-            : `Your verification code is ${code}. It expires in 10 minutes. If you didn't ask for it, you can ignore this email.`,
-        );
+        try {
+          await mailer.send(
+            body.email!,
+            zh ? `${p.brand_name} 驗證碼：${code}` : `Your ${p.brand_name} code: ${code}`,
+            zh
+              ? `你的驗證碼是 ${code}，10 分鐘內有效。如非本人操作，請忽略此電郵。`
+              : `Your verification code is ${code}. It expires in 10 minutes. If you didn't ask for it, you can ignore this email.`,
+          );
+        } catch (err) {
+          log(`sign-in code email failed: ${explainMailError(err)}`);
+          // The code never arrived, so don't make the member wait out the resend delay.
+          await db.query(`DELETE FROM otp_codes WHERE identity = $1 AND created_at > now() - interval '1 minute'`, [identity]);
+          throw new HttpError(503, "We couldn't send the email just now. Please try again in a minute, or ask the shop for help.");
+        }
       }
       return { ok: true, channel };
     },
@@ -169,7 +177,8 @@ export async function customerRoutes(app: FastifyInstance) {
       const link = memberCenterUrl(cfg.publicUrl, { card: result.card } as any);
       const zh = body.locale === 'zh-HK';
       const gifts = result.vouchers.map((v) => v.title).join(', ');
-      void mailer
+      // Awaited: on serverless hosts, work left running after the response can be cut off.
+      await mailer
         .send(
           pending.email,
           zh ? `歡迎加入 ${program.brand_name}！` : `Welcome to ${program.brand_name}!`,
@@ -191,7 +200,7 @@ ${link}
 
 Show your card every visit to collect a stamp. Collect ${program.stamps_required} to earn a reward.`,
         )
-        .catch((err) => log(`welcome email failed: ${err.message}`));
+        .catch((err) => log(`welcome email failed: ${explainMailError(err)}`));
     }
     reply.clearCookie(SIGNUP_COOKIE, { path: '/' });
     await sessions.setCustomer(reply, result.id);

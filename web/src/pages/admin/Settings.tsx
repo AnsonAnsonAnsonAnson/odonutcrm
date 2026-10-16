@@ -44,6 +44,7 @@ export default function Settings() {
   const [integrations, setIntegrations] = useState<any>(null);
   const [templates, setTemplates] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [mailMsg, setMailMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   useEffect(() => {
     api('/api/admin/program').then((r) => {
@@ -96,7 +97,32 @@ export default function Settings() {
           )}
           <Status on={integrations.googleWallet} label="Google Wallet" help="add your issuer ID and service account (see docs/04)" />
           <Status on={integrations.webPush} label="Web push" help="set VAPID keys" />
-          <Status on={integrations.email} label="Email (sign-in codes)" help="set SMTP settings; codes only appear in the server log until then" />
+          <li>
+            <span className={integrations.email ? 'dot on' : 'dot'} /> <b>Email (sign-in codes)</b>:{' '}
+            {integrations.email ? 'connected' : (
+              <span className="muted">
+                {integrations.emailMode === 'off'
+                  ? 'not set up, so members cannot get sign-in codes. Add the SMTP settings, then deploy again.'
+                  : 'test mode: codes are written to the server log. Add the SMTP settings to email them.'}
+              </span>
+            )}{' '}
+            {integrations.email && (
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  setMailMsg({ ok: true, text: 'Sending a test email…' });
+                  api('/api/admin/test-email', { body: {} }).then(
+                    (r) => setMailMsg({ ok: true, text: `Test email sent to ${r.to}. Check that inbox, and the spam folder.` }),
+                    (e) => setMailMsg({ ok: false, text: e.message }),
+                  );
+                }}
+              >
+                Send a test email
+              </button>
+            )}
+            {mailMsg && <div className={mailMsg.ok ? 'success' : 'error'}>{mailMsg.text}</div>}
+          </li>
           <Status on={integrations.sms} label="SMS sign-in (Twilio)" help="optional; set the TWILIO_* settings to let members sign in with their mobile number" />
           <Status on={integrations.httpsReady} label="Public https URL" help={`PUBLIC_URL is ${integrations.publicUrl}; Apple Wallet updates need https`} />
         </ul>

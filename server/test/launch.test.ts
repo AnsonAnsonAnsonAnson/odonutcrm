@@ -161,3 +161,12 @@ test('the app starts before the wallet certificates exist (paths from .env.examp
     /Configured file not found: \/secrets\/pass-cert.pem/,
   );
 });
+
+test('the admin email check says plainly what is wrong', async () => {
+  const r = await call('POST', '/api/admin/test-email', { cookie: owner, body: {} });
+  assert.equal(r.statusCode, 409);
+  assert.match(r.json().error, /no SMTP_HOST setting/);
+  const { explainMailError } = await import('../src/lib/mailer.js');
+  assert.match(explainMailError({ code: 'EAUTH', response: '535 5.7.8 Username and Password not accepted' }), /app password.*535/s);
+  assert.match(explainMailError({ code: 'ETIMEDOUT', message: 'Connection timeout' }), /smtp\.gmail\.com and 587/);
+});

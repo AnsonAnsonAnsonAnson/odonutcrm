@@ -8,6 +8,7 @@ import { createPrivateKey } from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { loadConfig } from '../config.js';
 import { createPool, one } from '../db.js';
+import { syncStoredCredentials } from '../services/apple/credentials.js';
 import { checkAppleCert } from '../lib/certs.js';
 
 type Level = 'ok' | 'warn' | 'fail';
@@ -43,6 +44,8 @@ async function main() {
   try {
     const m = await one<{ n: number; last: string }>(db, 'SELECT count(*)::int AS n, max(name) AS last FROM schema_migrations');
     add('ok', 'Database', `connected, ${m?.n} migrations applied (latest ${m?.last})`);
+    // Apple Wallet may also be set up from the admin page instead of certificate files.
+    await syncStoredCredentials(db, cfg).catch(() => {});
     const owner = await one<{ n: number }>(db, `SELECT count(*)::int AS n FROM staff_users WHERE role = 'owner' AND active`);
     if (!owner?.n) add('fail', 'Database', 'No active owner account. Set ADMIN_EMAIL and ADMIN_PASSWORD and restart.');
     const p = await one<{ privacy_policy: string; background_color: string }>(db, 'SELECT privacy_policy, background_color FROM program WHERE id = 1');
@@ -57,7 +60,7 @@ async function main() {
 
   // Apple Wallet
   if (!cfg.apple) {
-    add(cfg.isProd ? 'fail' : 'warn', 'Apple Wallet', 'not set up: APPLE_PASS_TYPE_ID, APPLE_TEAM_ID and the three certificate files are needed (docs/04)');
+    add(cfg.isProd ? 'fail' : 'warn', 'Apple Wallet', 'not set up: use Apple Wallet in the admin menu, or set APPLE_PASS_TYPE_ID, APPLE_TEAM_ID and the three certificate files (docs/04)');
   } else {
     const s = checkAppleCert(cfg.apple);
     if (s.ok) add('ok', 'Apple Wallet', `certificate valid until ${s.expiresAt?.slice(0, 10)} (${s.daysLeft} days)`);

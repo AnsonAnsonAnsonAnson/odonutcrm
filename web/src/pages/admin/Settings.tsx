@@ -87,7 +87,7 @@ export default function Settings() {
       <div className="panel">
         <h3>Integrations</h3>
         <ul className="list">
-          <Status on={integrations.appleWallet} label="Apple Wallet" help="add your Pass Type ID certificate (see docs/04)" />
+          <Status on={integrations.appleWallet} label="Apple Wallet" help="set it up under Apple Wallet in the menu" />
           {integrations.appleCert && (
             <li>
               <span className={integrations.appleCert.ok ? 'dot on' : 'dot warn'} /> <b>Apple certificate</b>: valid until {integrations.appleCert.expiresAt?.slice(0, 10)}

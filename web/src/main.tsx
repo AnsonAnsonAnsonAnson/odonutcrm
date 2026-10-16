@@ -13,6 +13,7 @@ import './styles.css';
 const StaffLogin = lazy(() => import('./pages/staff/StaffLogin'));
 const StaffScan = lazy(() => import('./pages/staff/StaffScan'));
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
+const AppleWallet = lazy(() => import('./pages/admin/AppleWallet'));
 const Dashboard = lazy(() => import('./pages/admin/Dashboard'));
 const Members = lazy(() => import('./pages/admin/Members').then((m) => ({ default: m.Members })));
 const MemberDetail = lazy(() => import('./pages/admin/Members').then((m) => ({ default: m.MemberDetail })));
@@ -50,6 +51,7 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="team" element={<Team />} />
                 <Route path="tiers" element={<Tiers />} />
                 <Route path="integrations" element={<Integrations />} />
+                <Route path="apple-wallet" element={<AppleWallet />} />
                 <Route path="poster" element={<Poster />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

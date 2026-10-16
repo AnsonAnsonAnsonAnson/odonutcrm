@@ -11,6 +11,7 @@ import { afterStamp, staffGuard } from './staff.js';
 import { newApiKey } from './pos.js';
 import { listTiers } from '../services/tiers.js';
 import { checkAppleCert } from '../lib/certs.js';
+import { appleSetupStatus, createSigningRequest, installCertificate, removeStoredCredentials } from '../services/apple/credentials.js';
 
 const uuid = z.string().uuid();
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -302,6 +303,31 @@ export async function adminRoutes(app: FastifyInstance) {
     const { id } = z.object({ id: uuid }).parse(req.params);
     await db.query(`UPDATE campaigns SET status = 'cancelled' WHERE id = $1 AND status IN ('draft','scheduled')`, [id]);
     return { ok: true };
+  });
+
+  // ---------- Apple Wallet setup wizard (owner) ----------
+  app.get('/apple-wallet', async (req) => {
+    await owner(req);
+    return appleSetupStatus(db, cfg);
+  });
+  app.post('/apple-wallet/csr', async (req) => {
+    const me = await owner(req);
+    const u = await one<{ email: string }>(db, 'SELECT email FROM staff_users WHERE id = $1', [me.id]);
+    return { csr: await createSigningRequest(db, cfg, u?.email ?? 'owner@example.com') };
+  });
+  app.post('/apple-wallet/certificate', async (req) => {
+    await owner(req);
+    const b = z.object({ certificate: z.string().min(100).max(20_000) }).parse(req.body);
+    const apple = await installCertificate(db, cfg, Buffer.from(b.certificate, 'base64'));
+    notifier.appleChanged();
+    log(`apple wallet activated for ${apple.passTypeId}`);
+    return appleSetupStatus(db, cfg);
+  });
+  app.delete('/apple-wallet', async (req) => {
+    await owner(req);
+    await removeStoredCredentials(db, cfg);
+    notifier.appleChanged();
+    return appleSetupStatus(db, cfg);
   });
 
   // ---------- Program settings & automations ----------

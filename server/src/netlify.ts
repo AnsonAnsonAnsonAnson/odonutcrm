@@ -7,6 +7,7 @@
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { loadConfig, type Config } from './config.js';
+import { syncStoredCredentials } from './services/apple/credentials.js';
 import { createPool, migrate, type Db } from './db.js';
 import { buildApp } from './app.js';
 import { seed } from './seed.js';
@@ -44,6 +45,11 @@ function runtime(): Promise<Runtime> {
   return booting;
 }
 
+/** Picks up Apple Wallet set up (or removed) through another copy of the function. */
+async function syncApple(rt: Runtime): Promise<void> {
+  if (await syncStoredCredentials(rt.db, rt.cfg, 60_000)) rt.app.svc.notifier.appleChanged();
+}
+
 export async function handleRequest(req: Request): Promise<Response> {
   let rt: Runtime;
   try {
@@ -55,6 +61,7 @@ export async function handleRequest(req: Request): Promise<Response> {
       { status: 503 },
     );
   }
+  await syncApple(rt).catch((err) => console.error('apple wallet sync failed', err));
   const url = new URL(req.url);
   const headers: Record<string, string> = {};
   req.headers.forEach((v, k) => (headers[k] = v));
@@ -77,5 +84,6 @@ export async function handleRequest(req: Request): Promise<Response> {
 
 export async function runScheduledJobs(): Promise<void> {
   const { cfg, db, app } = await runtime();
+  await syncApple({ cfg, db, app });
   await tick(db, cfg, app.svc.notifier, (m) => console.log(m));
 }

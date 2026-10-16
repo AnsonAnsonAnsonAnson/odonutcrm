@@ -137,7 +137,7 @@ test('the go-live doctor reports what is missing and exits non-zero in productio
     code = e.status;
   }
   assert.equal(code, 1);
-  assert.match(out, /✓ Database\s+connected, 3 migrations applied/);
+  assert.match(out, /✓ Database\s+connected, \d+ migrations applied/);
   assert.match(out, /✗ Apple Wallet\s+not set up/);
   assert.match(out, /✗ Email\s+SMTP is not set/);
   assert.match(out, /problem\(s\) to fix before launch/);

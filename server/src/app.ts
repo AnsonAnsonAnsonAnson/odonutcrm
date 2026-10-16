@@ -12,6 +12,7 @@ import { createMailer, type Mailer } from './lib/mailer.js';
 import { createSms, type SmsSender } from './lib/sms.js';
 import { posRoutes } from './routes/pos.js';
 import { Notifier } from './services/notify.js';
+import { syncStoredCredentials } from './services/apple/credentials.js';
 import { customerRoutes } from './routes/customer.js';
 import { walletRoutes } from './routes/wallet.js';
 import { appleWebServiceRoutes } from './routes/appleWebService.js';
@@ -45,6 +46,8 @@ export async function buildApp(
     bodyLimit: 256 * 1024,
   });
   const log = (m: string) => app.log.info(m);
+  // Apple Wallet credentials made with the admin setup wizard, when no certificate files are configured.
+  await syncStoredCredentials(db, cfg);
   const svc: Services = {
     cfg,
     db,

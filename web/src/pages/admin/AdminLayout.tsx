@@ -34,6 +34,7 @@ export default function AdminLayout() {
           <NavLink to="/admin/settings">Program & automations</NavLink>
           {owner && <NavLink to="/admin/stores">Stores</NavLink>}
           {owner && <NavLink to="/admin/team">Team</NavLink>}
+          {owner && <NavLink to="/admin/apple-wallet">Apple Wallet</NavLink>}
           {owner && <NavLink to="/admin/integrations">POS integration</NavLink>}
           <NavLink to="/staff">Counter (stamp)</NavLink>
           <button

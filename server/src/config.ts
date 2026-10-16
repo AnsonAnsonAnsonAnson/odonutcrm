@@ -72,6 +72,16 @@ function readSecret(file?: string, b64?: string): Buffer | undefined {
   }
 }
 
+export interface AppleWalletConfig {
+  passTypeId: string;
+  teamId: string;
+  cert: Buffer;
+  key: Buffer;
+  keyPassphrase?: string;
+  wwdr: Buffer;
+  apnsHost: string;
+}
+
 export type Config = ReturnType<typeof loadConfig>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
@@ -91,7 +101,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
   const wwdr = appleOn ? readSecret(c.APPLE_WWDR_FILE, c.APPLE_WWDR_B64) : undefined;
   const googleSa = c.GOOGLE_ISSUER_ID ? readSecret(c.GOOGLE_SERVICE_ACCOUNT_FILE, c.GOOGLE_SERVICE_ACCOUNT_B64) : undefined;
 
-  const apple =
+  const apple: AppleWalletConfig | null =
     c.APPLE_PASS_TYPE_ID && c.APPLE_TEAM_ID && appleCert && appleKey && wwdr
       ? {
           passTypeId: c.APPLE_PASS_TYPE_ID,
@@ -143,6 +153,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     adminPassword: c.ADMIN_PASSWORD,
     smtp,
     apple,
+    // 'env' when the certificates come from the settings above, 'stored' once the admin setup wizard
+    // has activated credentials kept in the database (services/apple/credentials.ts).
+    appleSource: (apple ? 'env' : null) as 'env' | 'stored' | null,
+    apnsHost: c.APNS_HOST,
+    // Tests and offline setups can supply Apple's WWDR intermediate instead of downloading it.
+    appleWwdrOverride: c.APPLE_WWDR_B64
+      ? Buffer.from(c.APPLE_WWDR_B64, 'base64')
+      : c.APPLE_WWDR_FILE && existsSync(c.APPLE_WWDR_FILE)
+        ? readSecret(c.APPLE_WWDR_FILE)
+        : undefined,
     google,
     vapid,
     tzOffsetHours: c.TZ_OFFSET_HOURS,

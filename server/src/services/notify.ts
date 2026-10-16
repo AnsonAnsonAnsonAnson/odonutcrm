@@ -22,6 +22,12 @@ export class Notifier {
     if (cfg.vapid) webpush.setVapidDetails(cfg.vapid.subject, cfg.vapid.publicKey, cfg.vapid.privateKey);
   }
 
+  /** Call after cfg.apple changes (Apple Wallet set up or removed from the admin page). */
+  appleChanged(): void {
+    this.apns?.close();
+    this.apns = this.cfg.apple ? new Apns(this.cfg.apple, this.log) : null;
+  }
+
   /** Tell every wallet holding this card to refresh (stamp count, reward count, message). */
   async passChanged(customerId: string, googleMessage?: { header: string; body: string }): Promise<string[]> {
     const channels: string[] = [];

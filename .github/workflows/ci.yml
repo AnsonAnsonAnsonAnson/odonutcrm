@@ -18,7 +18,6 @@ jobs:
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
     env:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/odonut_test
-      TEST_CERT_DIR: ${{ runner.temp }}/odcerts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,8 +27,13 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+      # The runner context isn't allowed in job-level env, so the cert folder is set per step.
       - run: bash server/scripts/make-test-certs.sh "$TEST_CERT_DIR"
+        env:
+          TEST_CERT_DIR: ${{ runner.temp }}/odcerts
       - run: npm test
+        env:
+          TEST_CERT_DIR: ${{ runner.temp }}/odcerts
 
   docker:
     runs-on: ubuntu-latest

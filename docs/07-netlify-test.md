@@ -1,6 +1,6 @@
 # Test run on Netlify
 
-Netlify is a quick way to put the club online for a trial: the website, member sign-up, stamps, rewards, staff scanning and the admin dashboard all work there. The real launch still runs on your own server with Docker (see the README and [the go-live checklist](06-go-live-checklist.md)), mainly because Apple Wallet needs certificate files that do not fit in Netlify's settings.
+Netlify is a quick way to put the club online for a trial: the website, member sign-up, stamps, rewards, staff scanning and the admin dashboard all work there. Apple Wallet works there too: certificate files don't fit in Netlify's settings, so set it up from the admin page instead (*Apple Wallet* in the menu), which keeps the certificate in the database. Your own server with Docker (see the README and [the go-live checklist](06-go-live-checklist.md)) remains the option with Google Wallet and one-minute scheduled jobs.
 
 ## How it runs on Netlify
 
@@ -38,6 +38,10 @@ Members sign in with a 6-digit code sent by email or SMS.
 - **Test mode (default).** Without email settings, codes are written to the function log instead of being sent. Open *Logs*, then *Functions*, then *api* in Netlify and look for "Your O! Donut code". Fine for trying it yourself; not for real customers.
 - **Real email.** Add `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `SMTP_FROM` (from your email provider), and set `APP_ENV=production`. In production mode codes are never written to the log.
 
+## Apple Wallet
+
+Sign in as the owner and open *Apple Wallet* in the admin menu. It walks through five steps: join the Apple Developer Program, create a Pass Type ID, download a signing request made by the server, turn it into a Pass Type ID certificate at developer.apple.com, and upload the `pass.cer`. The private key is generated on the server and stored encrypted with a key derived from `APP_SECRET`, so changing `APP_SECRET` later means running the wizard again. The server downloads Apple's WWDR G4 intermediate from apple.com and checks the certificate against it.
+
 ## Optional extras
 
 - **Web push offers:** run `npm run vapid -w server` on your computer and add `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`.
@@ -45,8 +49,7 @@ Members sign in with a 6-digit code sent by email or SMS.
 
 ## What the Netlify test can't show
 
-- **Apple Wallet cards.** These need three certificate files. Netlify functions allow only about 4 KB of settings in total, and the certificates are larger than that, so Apple Wallet shows as "not set up". Test it on the Docker server.
-- **Google Wallet** has the same size problem with its service-account key.
+- **Google Wallet** needs its service-account key file, which is larger than Netlify's ~4 KB limit for function settings. Test it on the Docker server.
 - **Timing.** Scheduled jobs run every 5 minutes, so a campaign or pass update can take up to 5 minutes to go out.
 - **Rate limits** on sign-in codes are counted per running copy of the function, so they are looser than on the server.
 - **Cold starts.** The first request after a quiet spell takes a few seconds while the function starts.

@@ -30,7 +30,7 @@ export default function AdminLayout() {
           <NavLink to="/admin/campaigns">Campaigns</NavLink>
           <NavLink to="/admin/rewards">Rewards & promos</NavLink>
           <NavLink to="/admin/tiers">Tiers</NavLink>
-          <NavLink to="/admin/poster">Counter poster</NavLink>
+          <NavLink to="/admin/poster">Print kit</NavLink>
           <NavLink to="/admin/settings">Program & automations</NavLink>
           {owner && <NavLink to="/admin/stores">Stores</NavLink>}
           {owner && <NavLink to="/admin/team">Team</NavLink>}

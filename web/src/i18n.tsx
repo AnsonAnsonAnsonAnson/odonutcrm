@@ -85,6 +85,8 @@ const dict = {
     tierTop: 'You are at our top tier. Thank you!',
     tierWindow: 'Counts stamps from the last {d} days.',
     promoWaiting: 'Your promo code {c} will be added when you finish signing up.',
+    promoMultiplier: '{m}× stamps on every purchase',
+    until: 'until',
   },
   'zh-HK': {
     signInRegister: '登入 / 註冊',
@@ -168,6 +170,8 @@ const dict = {
     tierTop: '你已達最高級別，多謝支持！',
     tierWindow: '以過去 {d} 日的印花計算。',
     promoWaiting: '完成註冊後會自動使用優惠碼 {c}。',
+    promoMultiplier: '每次消費可得 {m} 倍印花',
+    until: '直至',
   },
 } as const;
 

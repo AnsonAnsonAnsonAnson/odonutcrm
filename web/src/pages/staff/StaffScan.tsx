@@ -74,12 +74,12 @@ export default function StaffScan() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ stamps: number; stampsRequired: number; rewards: { title: string }[]; tierUpgrade: string | null }>('/api/staff/stamp', {
+      const r = await api<{ stamps: number; stampsRequired: number; rewards: { title: string }[]; tierUpgrade: string | null; bonus: number }>('/api/staff/stamp', {
         body: { cardId: result.customer.card_id, count, idempotencyKey: newKey() },
       });
       let msg = r.rewards.length
         ? `🎉 Card complete! ${r.rewards.map((x) => x.title).join(', ')} issued. Now ${r.stamps}/${r.stampsRequired}.`
-        : `✓ ${count} stamp${count > 1 ? 's' : ''} added. Now ${r.stamps}/${r.stampsRequired}.`;
+        : `✓ ${count + r.bonus} stamp${count + r.bonus > 1 ? 's' : ''} added${r.bonus ? ` (${count} + ${r.bonus} bonus)` : ''}. Now ${r.stamps}/${r.stampsRequired}.`;
       if (r.tierUpgrade) msg += ` ⭐ Now a ${r.tierUpgrade} member!`;
       await scan(result.customer.qr_token);
       setFlash(msg);
@@ -125,6 +125,7 @@ export default function StaffScan() {
         {me.role !== 'staff' && <Link to="/admin" className="link">Admin</Link>}
         <button className="link" onClick={logout}>Sign out</button>
       </header>
+      {me.promo && <div className="promo-strip">⭐ {me.promo.label} is on: every purchase stamp counts {me.promo.multiplier}×. Add the real number of items; the bonus is automatic.</div>}
 
       <div className="staff-grid">
         <section>

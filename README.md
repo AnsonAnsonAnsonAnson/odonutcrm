@@ -6,7 +6,7 @@ A self-hosted loyalty system in the style of Wanpo's Juicysuite member club: cus
 |---|---|
 | **Member site** `/` and `/me` | Email code sign-in (SMS optional), sign-up with welcome reward and welcome email, add-to-wallet page, stamp card, tier and progress, vouchers with QR, promo codes (also from a poster link), history, messages inbox, refer a friend, notifications, privacy page, EN / 繁中 |
 | **Staff counter** `/staff` | Camera QR scanner (or phone/email lookup), member tier, add stamps, redeem vouchers, last 24 hours of activity |
-| **Admin** `/admin` | Dashboard (members, active, repeat rate, redemptions, cohorts, card progress), members CRM, campaigns with segments and scheduling, vouchers and promo codes, automations (welcome, birthday, win-back, almost-there nudge, referral, expiry reminders), membership tiers, POS API keys, printable counter poster, privacy policy, stores, team roles |
+| **Admin** `/admin` | Dashboard (members, active, repeat rate, redemptions, cohorts, card progress), members CRM, campaigns with segments and scheduling, vouchers and promo codes, automations (welcome, birthday, win-back, almost-there nudge, referral, expiry reminders), membership tiers, POS API keys, print kit (counter poster, table tent, staff cheat sheet), double-stamp launch promotions, Apple certificate expiry warnings, privacy policy with a starter template, stores, team roles |
 | **POS API** `/api/pos/v1` | Your till stamps cards per paid order (safe retries), looks up members by phone and redeems vouchers |
 | **Wallet** | Signed Apple `.pkpass` with a live stamp strip, Apple Wallet web service + APNs updates, Google Wallet loyalty cards, web push |
 
@@ -16,17 +16,21 @@ A self-hosted loyalty system in the style of Wanpo's Juicysuite member club: cus
 2. [System plan: architecture, data model, flows, security](docs/02-system-plan.md)
 3. [Launch plan: phases, staff training, marketing calendar, operations](docs/03-launch-plan.md)
 4. [What you need to provide: Apple, Google, push, email](docs/04-apple-google-wallet-setup.md)
+5. [Staff guide: running the club at the counter](docs/05-staff-guide.md)
+6. [Go-live checklist](docs/06-go-live-checklist.md)
 
 ## Deploy (production)
 
 Requirements: a Linux server with Docker, a domain pointing at it.
 
 ```bash
-cp .env.example .env            # fill in DOMAIN, PUBLIC_URL, APP_SECRET, POSTGRES_PASSWORD, ADMIN_*, SMTP_*, APPLE_*...
-mkdir -p secrets                # put pass-cert.pem, pass-key.pem, wwdr.pem, google-wallet-sa.json here
-chmod 644 secrets/*
-docker compose up -d --build
+bash scripts/setup-server.sh    # creates .env with random secrets and push keys, checks DNS, starts the stack
+# then add SMTP_* and APPLE_* to .env, put pass-cert.pem, pass-key.pem, wwdr.pem in ./secrets (chmod 644)
+docker compose up -d
+docker compose exec app node dist/cli/doctor.js --online   # go-live check: lists anything still wrong
 ```
+
+Prefer to do it by hand? `cp .env.example .env`, fill it in, `docker compose up -d --build`.
 
 The stack runs Postgres, the app, Caddy and a nightly backup to `./backups` (30 days kept). Caddy obtains the HTTPS certificate automatically. The app migrates the database and creates the owner account on first start. Open `https://your-domain/staff/login` to sign in.
 
@@ -52,7 +56,7 @@ bash server/scripts/make-test-certs.sh /tmp/odcerts
 TEST_DATABASE_URL=postgres://localhost/odonut_test TEST_CERT_DIR=/tmp/odcerts npm test
 ```
 
-21 end-to-end scenarios cover sign-up, stamping rules, rewards, redemption, promo codes, referrals, signed pass contents, the Apple Wallet web service with push, campaigns, automations, roles and data deletion, plus tiers, SMS sign-in, the POS API, the near-reward nudge, the APNs client (against a local HTTP/2 TLS mock) and the Google Wallet client (mocked API).
+25 end-to-end scenarios cover sign-up, stamping rules, rewards, redemption, promo codes, referrals, signed pass contents, the Apple Wallet web service with push, campaigns, automations, roles and data deletion, plus tiers, SMS sign-in, the POS API, the near-reward nudge, the APNs client (against a local HTTP/2 TLS mock), the Google Wallet client (mocked API), double-stamp windows, the Apple certificate checks and the go-live check. `.github/workflows/ci.yml` runs the same on GitHub once the code is pushed there.
 
 ## Layout
 

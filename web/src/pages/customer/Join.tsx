@@ -203,6 +203,7 @@ export default function Join() {
       </div>
       <div className="sheet">
         <h2 className="divider-title">{t('signInRegister')}</h2>
+        {cfg.stampPromo && <p className="promo-note">⭐ <b>{cfg.stampPromo.label}</b>: {t('promoMultiplier').replace('{m}', String(cfg.stampPromo.multiplier))}</p>}
         {promo && <p className="promo-note">🎁 {t('promoWaiting').replace('{c}', promo)}</p>}
         {step === 'email' ? (
           <form className="form" onSubmit={sendCode}>

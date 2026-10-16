@@ -3,6 +3,40 @@ import { api, ApiError } from '../../api';
 import { ErrorText, Spinner } from '../../components/ui';
 import { useAdminMe } from './AdminLayout';
 
+/** ISO timestamp <-> the value a datetime-local input wants, in the browser's time zone. */
+const toLocal = (iso: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+const fromLocal = (v: string) => (v ? new Date(v).toISOString() : null);
+
+function privacyTemplate(brand: string) {
+  return `${brand} Club privacy policy
+
+This policy explains what personal data ${brand} ("we") collects through the ${brand} Club, why, and your choices. It follows the Personal Data (Privacy) Ordinance (Cap. 486).
+
+What we collect
+Your name, email address, mobile number, date of birth and gender when you join; your stamps, rewards and visits when you use your card; and, if you add the card to Apple Wallet or Google Wallet or allow notifications, a device identifier so we can update your card.
+
+Why we use it
+To run your membership: keep your stamp card, issue and check rewards, send your sign-in codes, and send birthday and reward messages. If you opt in, we also send offers and news. You can opt out at any time in Member settings, and we will stop.
+
+Who we share it with
+Only the service providers that help us run the club (hosting, email and text message delivery, Apple and Google for wallet card updates). They may only use it for that purpose. We do not sell your data.
+
+How long we keep it
+While you are a member. If you delete your account in Member settings, we delete your profile and card. We keep anonymous sales totals.
+
+Your rights
+You can ask for a copy of your data or ask us to correct it. Contact us at [your email] or at [your shop address].
+
+Changes
+We will post any changes on this page.
+
+Last updated: [date]`;
+}
+
 export default function Settings() {
   const me = useAdminMe();
   const owner = me.role === 'owner';
@@ -54,6 +88,12 @@ export default function Settings() {
         <h3>Integrations</h3>
         <ul className="list">
           <Status on={integrations.appleWallet} label="Apple Wallet" help="add your Pass Type ID certificate (see docs/04)" />
+          {integrations.appleCert && (
+            <li>
+              <span className={integrations.appleCert.ok ? 'dot on' : 'dot warn'} /> <b>Apple certificate</b>: valid until {integrations.appleCert.expiresAt?.slice(0, 10)}
+              {integrations.appleCert.problems.map((p: string) => <div key={p} className="error">{p}</div>)}
+            </li>
+          )}
           <Status on={integrations.googleWallet} label="Google Wallet" help="add your issuer ID and service account (see docs/04)" />
           <Status on={integrations.webPush} label="Web push" help="set VAPID keys" />
           <Status on={integrations.email} label="Email (sign-in codes)" help="set SMTP settings; codes only appear in the server log until then" />
@@ -86,6 +126,29 @@ export default function Settings() {
         </div>
         <label>Terms<textarea value={p.terms} onChange={set('terms')} /></label>
         <label>Privacy policy (shown at /privacy and linked from sign-up)<textarea rows={8} value={p.privacy_policy ?? ''} onChange={set('privacy_policy')} /></label>
+        {owner && !p.privacy_policy?.trim() && (
+          <button type="button" className="btn" onClick={() => setP({ ...p, privacy_policy: privacyTemplate(p.brand_name) })}>
+            Start from a template
+          </button>
+        )}
+        {p.privacy_policy?.includes('[your email]') && <p className="muted">Fill in the parts in [brackets] and have it checked before launch.</p>}
+      </fieldset>
+
+      <fieldset disabled={!owner} className="panel form">
+        <h3>Launch promotion: bonus stamps</h3>
+        <p className="muted">Multiply every purchase stamp for a set period, for example double stamps for the first two weeks. It shows on the member page and the counter screen; adjustments are never multiplied.</p>
+        <div className="row wrap">
+          <label>Multiplier
+            <select value={p.stamp_multiplier} onChange={set('stamp_multiplier', true)}>
+              <option value={1}>Off</option>
+              <option value={2}>Double stamps (2×)</option>
+              <option value={3}>Triple stamps (3×)</option>
+            </select>
+          </label>
+          <label>Starts (blank = now)<input type="datetime-local" value={toLocal(p.multiplier_starts_at)} onChange={(e) => setP({ ...p, multiplier_starts_at: fromLocal(e.target.value) })} /></label>
+          <label>Ends (blank = until switched off)<input type="datetime-local" value={toLocal(p.multiplier_ends_at)} onChange={(e) => setP({ ...p, multiplier_ends_at: fromLocal(e.target.value) })} /></label>
+          <label className="grow">Name shown to members<input maxLength={40} value={p.multiplier_label} onChange={set('multiplier_label')} /></label>
+        </div>
       </fieldset>
 
       <fieldset disabled={!owner} className="panel form">

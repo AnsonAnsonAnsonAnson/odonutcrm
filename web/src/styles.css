@@ -232,3 +232,22 @@ input[type='color'] { width: 72px; height: 44px; padding: 4px; }
   .poster { margin: 0 auto; box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @page { size: A4; margin: 10mm; }
 }
+.dot.warn { background: #E8A33D; }
+.promo-strip { background: #FFF4D6; color: #3B1F14; padding: 10px 16px; font-weight: 600; text-align: center; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.chip.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+.tent { width: 190mm; margin: 20px auto; }
+.tent-panel { height: 128mm; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 8mm; box-sizing: border-box; }
+.tent-panel h2 { font-size: 30px; margin: 4px 0 0; }
+.tent-panel p { margin: 0; max-width: 150mm; }
+.tent-panel .poster-qr { padding: 10px; margin: 6px 0; }
+.tent-panel .poster-reward { font-size: 18px !important; }
+.tent-panel.flip { transform: rotate(180deg); }
+.tent-fold { text-align: center; font-size: 11px; color: var(--muted); border-top: 1px dashed var(--muted); margin: 3mm 0; padding-top: 1mm; }
+.sheet-print { background: #fff; max-width: 190mm; margin: 20px auto; padding: 14mm; border-radius: 12px; box-shadow: var(--shadow); line-height: 1.5; }
+.sheet-print h2 { margin-top: 0; }
+.sheet-print h3 { margin: 16px 0 4px; }
+@media print {
+  .tent, .sheet-print { margin: 0 auto; box-shadow: none; }
+  .tent-panel { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

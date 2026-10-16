@@ -88,6 +88,9 @@ Schema: `server/migrations/001_init.sql` and `002_suite.sql`.
 - Reaching a tier for the first time issues its upgrade voucher once (unique index on voucher source), sends "Welcome to Glazed!" to the lock screen, and adds a TIER field to the pass header.
 - Admin → Tiers edits levels; campaigns can target one tier.
 
+### Launch promotions
+Program settings hold a stamp multiplier (2× or 3×) with an optional start and end. While it runs, each purchase stamp (counter or POS) writes a second `bonus` ledger row, so reports can tell real visits from promotion stamps. Adjustments are never multiplied. The member page, sign-up page and counter screen show the promotion.
+
 ### SMS sign-in (optional)
 With Twilio configured, existing members can sign in with their mobile number instead of email. Codes go only to numbers that already belong to a member (stops SMS pumping), at most 5 a day and one per 45 seconds. New members still sign up with email.
 
@@ -141,6 +144,8 @@ Member shows the voucher QR in the Member Center. Staff scan it and tap Redeem. 
 - Multiple app containers are safe: jobs use an advisory lock; migrations use a transaction lock.
 - **Backups:** the `backup` service in docker-compose writes a gzipped `pg_dump` to `./backups` every 24 hours and deletes files older than 30 days. Copy that folder off the server as well.
 - **Monitoring:** `GET /healthz` for uptime checks; Apple device errors land in `apple_logs` and the app log.
+- **Go-live check:** `node dist/cli/doctor.js [--online]` inside the app container checks settings, database, Apple certificate (expiry, key match, team, issuing CA), Google service account, SMTP login, Twilio, DNS and https. The admin Integrations panel shows the certificate expiry and warns 30 days ahead.
+- **Wallet files are optional at start-up:** certificate paths are only read once the Apple or Google IDs are set, so the app runs (web card only) before the certificates arrive.
 
 ## 8. Testing
 

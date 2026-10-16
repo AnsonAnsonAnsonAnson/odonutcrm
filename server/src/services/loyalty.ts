@@ -1,7 +1,7 @@
 import { one, many, withTx, type Db, type Queryable, type Tx } from '../db.js';
 import { HttpError } from '../lib/auth.js';
 import { randomCode, randomToken } from '../lib/crypto.js';
-import { getProgram, type CardRow } from './program.js';
+import { activeMultiplier, getProgram, type CardRow } from './program.js';
 import { reevaluateTier, type TierChange } from './tiers.js';
 
 export interface IssuedVoucher {
@@ -130,6 +130,8 @@ export interface StampResult {
   rewards: IssuedVoucher[];
   referrer: { customerId: string; voucher: IssuedVoucher } | null;
   tier: TierChange | null;
+  /** Extra stamps added by a running multiplier promotion (e.g. double stamps). */
+  bonus: number;
 }
 
 export async function addStamps(db: Db, input: StampInput): Promise<StampResult> {
@@ -148,7 +150,7 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
     if (input.idempotencyKey) {
       const prior = await one(tx, 'SELECT 1 FROM stamp_events WHERE idempotency_key = $1', [input.idempotencyKey]);
       if (prior) {
-        return { duplicate: true, customerId: card.customer_id, card, stampsRequired: program.stamps_required, rewards: [], referrer: null, tier: null };
+        return { duplicate: true, customerId: card.customer_id, card, stampsRequired: program.stamps_required, rewards: [], referrer: null, tier: null, bonus: 0 };
       }
     }
 
@@ -174,7 +176,19 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
       [card.id, delta, input.reason, input.staffId, input.storeId, input.note ?? null, input.idempotencyKey ?? null, input.apiKeyId ?? null],
     );
 
-    let stamps = card.stamps + delta;
+    // Launch promotions: purchase stamps are multiplied while the window is open, logged as a separate bonus row.
+    let bonus = 0;
+    const promo = input.reason === 'purchase' ? activeMultiplier(program) : null;
+    if (promo) {
+      bonus = delta * (promo.multiplier - 1);
+      await tx.query(
+        `INSERT INTO stamp_events (card_id, delta, reason, staff_id, store_id, note, api_key_id) VALUES ($1,$2,'bonus',$3,$4,$5,$6)`,
+        [card.id, bonus, input.staffId, input.storeId, promo.label, input.apiKeyId ?? null],
+      );
+    }
+    const total = delta + bonus;
+
+    let stamps = card.stamps + total;
     const rewards: IssuedVoucher[] = [];
     while (stamps >= program.stamps_required) {
       stamps -= program.stamps_required;
@@ -193,7 +207,7 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
       `UPDATE cards SET stamps = $2, lifetime_stamps = lifetime_stamps + GREATEST($3, 0),
               rewards_earned = rewards_earned + $4, updated_at = now()
         WHERE id = $1 RETURNING *`,
-      [card.id, stamps, delta, Math.floor((card.stamps + delta) / program.stamps_required)],
+      [card.id, stamps, total, Math.floor((card.stamps + total) / program.stamps_required)],
     );
 
     let referrer: StampResult['referrer'] = null;
@@ -213,7 +227,7 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
 
     const tier = program.tiers_enabled ? await reevaluateTier(tx, card.customer_id, program.tier_window_days) : null;
 
-    return { duplicate: false, customerId: card.customer_id, card: updated!, stampsRequired: program.stamps_required, rewards, referrer, tier };
+    return { duplicate: false, customerId: card.customer_id, card: updated!, stampsRequired: program.stamps_required, rewards, referrer, tier, bonus };
   });
 }
 

@@ -165,6 +165,13 @@ export default function Member() {
         </div>
       </section>
 
+      {cfg.stampPromo && (
+        <p className="promo-note">
+          ⭐ <b>{cfg.stampPromo.label}</b>: {t('promoMultiplier').replace('{m}', String(cfg.stampPromo.multiplier))}
+          {cfg.stampPromo.endsAt && ` ${t('until')} ${fmtDate(cfg.stampPromo.endsAt)}`}
+        </p>
+      )}
+
       {me.tier?.current && (
         <section className="tier-box">
           <div className="row between">

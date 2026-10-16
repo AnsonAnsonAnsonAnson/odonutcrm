@@ -4,6 +4,7 @@ import { many, one } from '../db.js';
 import { HttpError, STAFF_COOKIE, hasRole, type StaffRole, type StaffSession } from '../lib/auth.js';
 import { verifyPassword } from '../lib/crypto.js';
 import { addStamps, redeemVoucher, type StampResult } from '../services/loyalty.js';
+import { activeMultiplier, getProgram } from '../services/program.js';
 import type { Services } from '../app.js';
 
 export function staffGuard(svc: Services, min: StaffRole) {
@@ -96,7 +97,7 @@ export async function staffRoutes(app: FastifyInstance) {
     const s = await staff(req);
     const store = s.storeId ? await one(db, 'SELECT id, name FROM stores WHERE id = $1', [s.storeId]) : null;
     const program = await one(db, 'SELECT stamps_required, max_stamps_per_scan, brand_name, background_color, foreground_color FROM program WHERE id = 1');
-    return { ...s, store, program };
+    return { ...s, store, program, promo: activeMultiplier(await getProgram(db)) };
   });
 
   // Resolve whatever the scanner read: a member card QR or a voucher code.
@@ -159,6 +160,7 @@ export async function staffRoutes(app: FastifyInstance) {
       stampsRequired: r.stampsRequired,
       rewards: r.rewards.map((v) => ({ title: v.title, code: v.code })),
       tierUpgrade: r.tier?.upgraded && r.tier.to ? r.tier.to.name : null,
+      bonus: r.bonus,
     };
   });
 

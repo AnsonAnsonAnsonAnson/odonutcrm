@@ -30,6 +30,10 @@ export interface Program {
   near_reward_message: string;
   welcome_email_enabled: boolean;
   privacy_policy: string;
+  stamp_multiplier: number;
+  multiplier_starts_at: string | Date | null;
+  multiplier_ends_at: string | Date | null;
+  multiplier_label: string;
   updated_at: Date;
 }
 
@@ -85,4 +89,12 @@ export async function loadPassData(q: Queryable, by: { serial?: string; customer
       WHERE active AND latitude IS NOT NULL AND longitude IS NOT NULL ORDER BY created_at LIMIT 10`,
   );
   return { card, customer, activeVouchers: v?.n ?? 0, stores };
+}
+
+/** The stamp multiplier in force right now, or null when no promotion is running. */
+export function activeMultiplier(p: Program, now = new Date()): { multiplier: number; label: string; endsAt: string | null } | null {
+  if (p.stamp_multiplier <= 1) return null;
+  if (p.multiplier_starts_at && new Date(p.multiplier_starts_at) > now) return null;
+  if (p.multiplier_ends_at && new Date(p.multiplier_ends_at) <= now) return null;
+  return { multiplier: p.stamp_multiplier, label: p.multiplier_label, endsAt: p.multiplier_ends_at ? new Date(p.multiplier_ends_at).toISOString() : null };
 }

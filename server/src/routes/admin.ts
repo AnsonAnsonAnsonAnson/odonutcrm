@@ -10,6 +10,7 @@ import { getProgram } from '../services/program.js';
 import { afterStamp, staffGuard } from './staff.js';
 import { newApiKey } from './pos.js';
 import { listTiers } from '../services/tiers.js';
+import { checkAppleCert } from '../lib/certs.js';
 
 const uuid = z.string().uuid();
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -314,6 +315,7 @@ export async function adminRoutes(app: FastifyInstance) {
         webPush: !!cfg.vapid,
         email: !!cfg.smtp,
         sms: !!cfg.twilio,
+        appleCert: cfg.apple ? checkAppleCert(cfg.apple) : null,
         publicUrl: cfg.publicUrl,
         httpsReady: cfg.publicUrl.startsWith('https://'),
       },
@@ -352,6 +354,10 @@ export async function adminRoutes(app: FastifyInstance) {
         near_reward_message: z.string().trim().min(1).max(240),
         welcome_email_enabled: z.boolean(),
         privacy_policy: z.string().max(20000),
+        stamp_multiplier: z.number().int().min(1).max(5),
+        multiplier_starts_at: z.string().datetime({ offset: true }).nullable(),
+        multiplier_ends_at: z.string().datetime({ offset: true }).nullable(),
+        multiplier_label: z.string().trim().min(1).max(40),
       })
       .partial()
       .parse(req.body);

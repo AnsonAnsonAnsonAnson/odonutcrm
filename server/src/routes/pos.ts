@@ -120,6 +120,7 @@ export async function posRoutes(app: FastifyInstance) {
       stampsRequired: r.stampsRequired,
       rewardsIssued: r.rewards.map((v) => ({ code: v.code, title: v.title })),
       tier: r.tier?.to?.name ?? null,
+      bonusStamps: r.bonus,
     };
   });
 

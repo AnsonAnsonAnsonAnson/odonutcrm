@@ -40,6 +40,7 @@ export interface PublicConfig {
   vapidPublicKey: string | null;
   privacyPolicy: string;
   smsSignIn: boolean;
+  stampPromo: { multiplier: number; label: string; endsAt: string | null } | null;
 }
 
 export const platform = (() => {

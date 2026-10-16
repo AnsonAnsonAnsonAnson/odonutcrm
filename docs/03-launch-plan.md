@@ -17,7 +17,7 @@ A phased plan from accounts to a full public launch. Weeks are a guide; Apple an
 ## Phase 1: Set up and soft test (weeks 2 to 3)
 
 1. Follow `docs/04-apple-google-wallet-setup.md` to create the Pass Type ID certificate, Google issuer and VAPID keys.
-2. Deploy: copy `.env.example` to `.env`, fill it in, place secrets in `./secrets`, point DNS at the server, run `docker compose up -d --build`.
+2. Deploy: point DNS at the server, run `bash scripts/setup-server.sh`, add the SMTP and Apple settings, then run the go-live check (`docker compose exec app node dist/cli/doctor.js --online`) until it says Ready to launch. Full list: `docs/06-go-live-checklist.md`.
 3. Sign in at `/staff/login` with the owner account, change its password (Team → Reset password), add staff accounts and the store(s) with coordinates.
 4. In **Program & automations** set colours, voucher choices and terms; press **Sync Google Wallet design**.
 5. Test on real phones (at least one iPhone and one Android):
@@ -33,7 +33,8 @@ A phased plan from accounts to a full public launch. Weeks are a guide; Apple an
 - **Counter flow (under 10 seconds):** "Are you an O! Donut Club member?" → member shows the card → scan → choose the number of qualifying items → Add stamps. If no phone: search by mobile number.
 - **Rules to train:** one stamp per qualifying item or order (decide which and print it), never stamp without a purchase, redeem vouchers only by scanning or typing the code, and use "Adjust stamps" (manager) with a reason for corrections.
 - **Counter tablet:** any tablet or phone with a camera; open `/staff`, add to home screen, keep it charging.
-- **Print:** counter tent card and door sticker with a QR to your domain ("Scan, join in 30 seconds, get a free topping"); a sticker on cups or boxes; a slide on the menu screen.
+- **Print:** Admin → Print kit has the A4 counter poster, a fold-in-half table tent and the staff cheat sheet, each with the join QR (optionally carrying a promo code). Add a door sticker, a sticker on cups or boxes, and a slide on the menu screen.
+- **Training:** walk each person through `docs/05-staff-guide.md`.
 
 ## Phase 3: Soft launch (weeks 5 to 6)
 
@@ -43,7 +44,7 @@ A phased plan from accounts to a full public launch. Weeks are a guide; Apple an
 
 ## Phase 4: Public launch (week 7)
 
-- **Launch offer:** double stamps for the first two weeks (manager uses Add 2 stamps), or a launch promo code per channel: `IGLAUNCH`, `XHSLAUNCH`, `FLYER`.
+- **Launch offer:** double stamps for the first two weeks (Program & automations → Launch promotion, with an end date; it switches itself off), plus a launch promo code per channel: `IGLAUNCH`, `XHSLAUNCH`, `FLYER`, so Rewards & promos shows how many members each channel brought.
 - **Channels:** Instagram and Xiaohongshu posts and stories with the join link; KOL tastings with their own promo codes; an in-store "join now" push at the counter for every customer.
 - **Day 1 campaign:** none. Let the welcome voucher and stamps do the work. First broadcast after two weeks.
 

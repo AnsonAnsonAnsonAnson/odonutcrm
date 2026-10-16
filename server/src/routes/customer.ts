@@ -4,7 +4,7 @@ import { one, many, withTx } from '../db.js';
 import { HttpError, CUSTOMER_COOKIE } from '../lib/auth.js';
 import { hmac, otpCode, safeEqual } from '../lib/crypto.js';
 import { applyPromoCode, createCustomer, customerHistory, customerVouchers } from '../services/loyalty.js';
-import { getProgram } from '../services/program.js';
+import { activeMultiplier, getProgram } from '../services/program.js';
 import { memberCenterUrl } from '../services/apple/pass.js';
 import { tierProgress } from '../services/tiers.js';
 
@@ -37,6 +37,7 @@ export async function customerRoutes(app: FastifyInstance) {
       appleWallet: !!cfg.apple,
       googleWallet: !!cfg.google,
       vapidPublicKey: cfg.vapid?.publicKey ?? null,
+      stampPromo: activeMultiplier(p),
     };
   });
 

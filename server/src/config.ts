@@ -81,10 +81,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     throw new Error(`Invalid configuration:\n${msg}`);
   }
   const c = parsed.data;
-  const appleCert = readSecret(c.APPLE_PASS_CERT_FILE, c.APPLE_PASS_CERT_B64);
-  const appleKey = readSecret(c.APPLE_PASS_KEY_FILE, c.APPLE_PASS_KEY_B64);
-  const wwdr = readSecret(c.APPLE_WWDR_FILE, c.APPLE_WWDR_B64);
-  const googleSa = readSecret(c.GOOGLE_SERVICE_ACCOUNT_FILE, c.GOOGLE_SERVICE_ACCOUNT_B64);
+  // Certificate files are only read once the matching IDs are filled in, so the file paths in
+  // .env.example do not stop the app starting before the certificates exist.
+  const appleOn = !!(c.APPLE_PASS_TYPE_ID && c.APPLE_TEAM_ID);
+  const appleCert = appleOn ? readSecret(c.APPLE_PASS_CERT_FILE, c.APPLE_PASS_CERT_B64) : undefined;
+  const appleKey = appleOn ? readSecret(c.APPLE_PASS_KEY_FILE, c.APPLE_PASS_KEY_B64) : undefined;
+  const wwdr = appleOn ? readSecret(c.APPLE_WWDR_FILE, c.APPLE_WWDR_B64) : undefined;
+  const googleSa = c.GOOGLE_ISSUER_ID ? readSecret(c.GOOGLE_SERVICE_ACCOUNT_FILE, c.GOOGLE_SERVICE_ACCOUNT_B64) : undefined;
 
   const apple =
     c.APPLE_PASS_TYPE_ID && c.APPLE_TEAM_ID && appleCert && appleKey && wwdr

@@ -3,15 +3,24 @@
   "private": true,
   "version": "1.0.0",
   "description": "O! Donut loyalty CRM: wallet stamp cards, vouchers, campaigns and push",
-  "workspaces": ["server", "web"],
+  "workspaces": [
+    "server",
+    "web"
+  ],
   "scripts": {
     "dev": "npm run dev -w server & npm run dev -w web",
     "build": "npm run build -w web && npm run build -w server",
+    "build:netlify": "npm run build -w web && node scripts/build-netlify.mjs",
     "start": "npm run start -w server",
     "migrate": "npm run migrate -w server",
     "seed": "npm run seed -w server",
     "test": "npm test -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
 }

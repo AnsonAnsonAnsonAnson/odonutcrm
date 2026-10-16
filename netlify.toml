@@ -1,7 +1,8 @@
 # Netlify test deployment: the web app as static files, the API as a Netlify Function and
 # Postgres from Netlify DB (or any DATABASE_URL). Setup steps: docs/07-netlify-test.md.
 [build]
-  command = "npm run build -w web"
+  # Builds the web app, then bundles the API so it runs on any Node version Netlify picks.
+  command = "npm run build:netlify"
   publish = "web/dist"
 
 [build.environment]
@@ -12,8 +13,8 @@
   node_bundler = "esbuild"
   # Native image library and the pass signer load at runtime from node_modules.
   external_node_modules = ["sharp", "passkit-generator", "pg"]
-  # set-cookie-parser: Node 22 loads lib/ (its "module-sync" entry), which Netlify's file tracing misses.
-  included_files = ["server/migrations/**", "server/assets/**", "node_modules/set-cookie-parser/lib/**"]
+  # The API itself is pre-bundled by scripts/build-netlify.mjs; these files are read at runtime.
+  included_files = ["server/migrations/**", "server/assets/**"]
 
 # Client-side routes (/me, /staff, /admin...) all load the single-page app.
 [[redirects]]

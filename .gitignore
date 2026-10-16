@@ -8,3 +8,4 @@ secrets/
 certs-test/
 backups/
 .netlify/
+server/dist-netlify/

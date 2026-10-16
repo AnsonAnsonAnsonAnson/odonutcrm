@@ -51,7 +51,7 @@ export async function handleRequest(req: Request): Promise<Response> {
   } catch (err: any) {
     console.error(err);
     return Response.json(
-      { error: 'The server could not start. Check the Netlify function log; usually DATABASE_URL or APP_SECRET is missing.' },
+      { error: 'The server could not start. Check the Netlify function log; usually the database or APP_SECRET is not set up yet.' },
       { status: 503 },
     );
   }

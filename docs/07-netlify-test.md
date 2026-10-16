@@ -7,7 +7,7 @@ Netlify is a quick way to put the club online for a trial: the website, member s
 - The customer, staff and admin pages are served as a static site from `web/dist`.
 - The API runs as a Netlify Function (`netlify/functions/api.mts`), which answers `/api/*` and `/healthz`.
 - Scheduled jobs (birthday vouchers, campaigns, expiry reminders, pass updates) run every 5 minutes (`netlify/functions/jobs.mts`). On the Docker server they run every minute.
-- The database is Postgres. Netlify DB (built on Neon) is the easiest; any Postgres URL works.
+- The database is Postgres. Netlify Database is the easiest; any Postgres URL works.
 - The database tables are created automatically the first time the API starts.
 
 Everything is set up in `netlify.toml`, so there is nothing to change in the code.
@@ -18,7 +18,7 @@ Everything is set up in `netlify.toml`, so there is nothing to change in the cod
    - If Netlify says it found several sites, pick **@odonut/web**.
    - Leave *Base directory* empty. The build command and publish folder come from `netlify.toml`.
 2. **Add a database.** Either:
-   - add **Netlify DB** to the project (it sets `NETLIFY_DATABASE_URL` for you; Netlify may ask you to claim the database in Neon to keep it beyond the trial period), or
+   - in the project, open *Data & Storage*, then *Database*, and choose *Create a database manually* (Netlify Database sets `NETLIFY_DB_URL` for you; the older Netlify DB extension's `NETLIFY_DATABASE_URL` also works), or
    - set `DATABASE_URL` to any Postgres connection string, for example from Neon or Supabase.
 3. **Set environment variables** under *Project configuration*, then *Environment variables*:
 
@@ -28,7 +28,7 @@ Everything is set up in `netlify.toml`, so there is nothing to change in the cod
    | `ADMIN_EMAIL` | The email you will sign in to the admin dashboard with. |
    | `ADMIN_PASSWORD` | A strong password for that account. |
 
-4. **Deploy.** Trigger a deploy. When it finishes, open `https://<your-site>.netlify.app/healthz`; it should show `{"ok":true}`.
+4. **Deploy.** Settings only apply after a new deploy: *Deploys*, then *Trigger deploy*. When it finishes, open `https://<your-site>.netlify.app/healthz`; it should show `{"ok":true}`.
 5. **Sign in.** Go to `/staff/login` with the admin email and password, then set up your store, rewards and branding.
 
 ## Member sign-in codes

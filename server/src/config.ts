@@ -75,6 +75,8 @@ function readSecret(file?: string, b64?: string): Buffer | undefined {
 export type Config = ReturnType<typeof loadConfig>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
+  // On Netlify, fall back to the site's own URL and the Netlify DB (Neon) connection string.
+  if (env.NETLIFY) env = { ...env, PUBLIC_URL: env.PUBLIC_URL || env.URL, DATABASE_URL: env.DATABASE_URL || env.NETLIFY_DATABASE_URL };
   const parsed = schema.safeParse(env);
   if (!parsed.success) {
     const msg = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('\n');

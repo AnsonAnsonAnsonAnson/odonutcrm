@@ -14,8 +14,8 @@ export type Db = pg.Pool;
 export type Tx = pg.PoolClient;
 export type Queryable = pg.Pool | pg.PoolClient;
 
-export function createPool(databaseUrl: string): Db {
-  return new pg.Pool({ connectionString: databaseUrl, max: 10 });
+export function createPool(databaseUrl: string, max = 10): Db {
+  return new pg.Pool({ connectionString: databaseUrl, max });
 }
 
 export async function withTx<T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> {
@@ -43,15 +43,16 @@ export async function many<T = any>(q: Queryable, text: string, params: unknown[
   return r.rows as T[];
 }
 
-const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+// MIGRATIONS_DIR overrides it where the code runs bundled (e.g. Netlify Functions).
+const migrationsDir = () => process.env.MIGRATIONS_DIR ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
 
 export async function migrate(db: Db, log: (m: string) => void = console.log): Promise<void> {
   await db.query(`CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`);
   const done = new Set((await many<{ name: string }>(db, 'SELECT name FROM schema_migrations')).map((r) => r.name));
-  const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
+  const files = readdirSync(migrationsDir()).filter((f) => f.endsWith('.sql')).sort();
   for (const f of files) {
     if (done.has(f)) continue;
-    const sql = readFileSync(join(migrationsDir, f), 'utf8');
+    const sql = readFileSync(join(migrationsDir(), f), 'utf8');
     await withTx(db, async (tx) => {
       // Serialise concurrent migrators (e.g. two containers booting at once).
       await tx.query('SELECT pg_advisory_xact_lock(424242)');

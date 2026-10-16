@@ -18,6 +18,7 @@ A self-hosted loyalty system in the style of Wanpo's Juicysuite member club: cus
 4. [What you need to provide: Apple, Google, push, email](docs/04-apple-google-wallet-setup.md)
 5. [Staff guide: running the club at the counter](docs/05-staff-guide.md)
 6. [Go-live checklist](docs/06-go-live-checklist.md)
+7. [Test run on Netlify](docs/07-netlify-test.md)
 
 ## Deploy (production)
 

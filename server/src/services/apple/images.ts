@@ -5,10 +5,11 @@ import { fileURLToPath } from 'node:url';
 
 // Brand art lives in server/assets/pass. Drop in your own icon.png / logo.png / stamp-on.png /
 // stamp-off.png (any size, square for stamps) and they replace the generated defaults.
-export const ASSET_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'assets', 'pass');
+// PASS_ASSET_DIR overrides it where the code runs bundled (e.g. Netlify Functions).
+const assetDir = () => process.env.PASS_ASSET_DIR ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'assets', 'pass');
 
 function asset(name: string): Buffer | null {
-  const p = join(ASSET_DIR, name);
+  const p = join(assetDir(), name);
   return existsSync(p) ? readFileSync(p) : null;
 }
 

@@ -226,7 +226,7 @@ export default function Member() {
         ))}
       </div>
 
-      <div className="tiles">
+      <div className="tiles grid2">
         <button className="tile" onClick={openInbox}><span className="tile-icon">✉</span>{t('inbox')}</button>
         <button className="tile" onClick={() => setModal('refer')}><span className="tile-icon">♥</span>{t('refer')}</button>
         {cfg.vapidPublicKey && (

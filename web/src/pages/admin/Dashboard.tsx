@@ -38,7 +38,7 @@ export default function Dashboard() {
     ['Vouchers redeemed (30 days)', t.vouchers_redeemed_30d, `${t.vouchers_issued_30d} issued`],
     ['Redemption rate (90 days)', pct(d.redemption.redeemed, d.redemption.issued), `${d.redemption.redeemed}/${d.redemption.issued}`],
     ['Wallet passes', t.apple_passes + t.google_passes, `${t.apple_passes} Apple · ${t.google_passes} Google`],
-    ['Reachable by push', t.opted_in, `${t.web_push} web push`],
+    ['Opted in to offers', t.opted_in, `${t.web_push} also on web push`],
   ];
   const maxDist = Math.max(1, ...d.distribution.map((x: any) => x.cards));
   return (

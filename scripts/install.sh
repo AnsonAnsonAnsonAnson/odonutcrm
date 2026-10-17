@@ -34,6 +34,12 @@ if [ "$mem_mb" -lt 1900 ] && ! swapon --show | grep -q .; then
   grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
+# Some server images switch the firewall on with only SSH allowed; open the web ports.
+if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
+  ufw allow 80/tcp >/dev/null
+  ufw allow 443 >/dev/null
+fi
+
 if [ -d "$DIR/.git" ]; then
   say "Updating the app in $DIR"
   git -C "$DIR" pull --ff-only

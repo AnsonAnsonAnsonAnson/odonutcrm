@@ -18,18 +18,19 @@ A self-hosted loyalty system in the style of Wanpo's Juicysuite member club: cus
 4. [What you need to provide: Apple, Google, push, email](docs/04-apple-google-wallet-setup.md)
 5. [Staff guide: running the club at the counter](docs/05-staff-guide.md)
 6. [Go-live checklist](docs/06-go-live-checklist.md)
-7. [Test run on Netlify](docs/07-netlify-test.md)
+7. [Test run on Netlify](docs/07-netlify-test.md) (no longer used: the club is self-hosted)
 
 ## Deploy (production)
 
-Requirements: a Linux server with Docker, a domain pointing at it.
+On a fresh Ubuntu server (a US$6 VPS is enough), with a domain pointing at it, one line installs everything:
 
 ```bash
-bash scripts/setup-server.sh    # creates .env with random secrets and push keys, checks DNS, starts the stack
-# then add SMTP_* and APPLE_* to .env, put pass-cert.pem, pass-key.pem, wwdr.pem in ./secrets (chmod 644)
-docker compose up -d
-docker compose exec app node dist/cli/doctor.js --online   # go-live check: lists anything still wrong
+curl -fsSL https://raw.githubusercontent.com/AnsonAnsonAnsonAnson/odonutcrm/main/scripts/install.sh -o install.sh && sudo bash install.sh
 ```
+
+It installs Docker, adds swap on servers under 2 GB, downloads the app to `/opt/odonut` and runs `scripts/setup-server.sh`, which creates `.env` with random secrets and push keys, asks for a Gmail address and app password for sign-in codes, checks DNS, starts the stack and runs the go-live check. Apple Wallet is then set up from Admin → Apple Wallet. Later updates: `sudo bash /opt/odonut/scripts/update.sh`.
+
+On a server that already has Docker, run `bash scripts/setup-server.sh` from a checkout instead.
 
 Prefer to do it by hand? `cp .env.example .env`, fill it in, `docker compose up -d --build`.
 

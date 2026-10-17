@@ -2,13 +2,21 @@
 # First-time server setup for O! Donut Club. Run from the project folder on the server:
 #   bash scripts/setup-server.sh
 # It creates .env with fresh random secrets (never overwrites an existing one), makes the
-# secrets/ and backups/ folders, checks DNS, then offers to start the stack and run the go-live check.
+# secrets/ and backups/ folders, sets up Gmail for sign-in codes if you like, checks DNS,
+# then starts the stack and runs the go-live check.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 rand() { openssl rand -hex 32; }
 b64url() { base64 | tr -d '=\n' | tr '/+' '_-'; }
+# set_env NAME VALUE: replaces NAME's line in .env.
+set_env() {
+  local v=${2//\\/\\\\}
+  v=${v//&/\\&}
+  v=${v//|/\\|}
+  sed -i "s|^$1=.*|$1=$v|" .env
+}
 
 command -v docker >/dev/null || { echo "Docker is not installed. On Ubuntu: curl -fsSL https://get.docker.com | sh"; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "Docker Compose v2 is missing (docker compose ...)."; exit 1; }
@@ -22,6 +30,7 @@ if [ -f .env ]; then
 else
   say "Creating .env"
   read -rp "Domain for the member site (e.g. club.odonut.hk): " DOMAIN
+  DOMAIN=$(printf "%s" "$DOMAIN" | tr -d "[:space:]" | tr "A-Z" "a-z" | sed -E "s#^[a-z]+://##; s#/.*##")
   read -rp "Owner login email: " ADMIN_EMAIL
   ADMIN_PASSWORD=$(openssl rand -base64 18 | tr -d '/+=')
 
@@ -43,7 +52,24 @@ else
       .env.example > .env
   chmod 600 .env
   say "Owner login: $ADMIN_EMAIL / $ADMIN_PASSWORD"
-  echo "Write this password down now; it is not shown again. Change it after your first sign-in (Admin → Team)."
+  echo "Write this password down. Change it after your first sign-in (Admin → Team)."
+fi
+
+if ! grep -qE '^SMTP_HOST=.+' .env; then
+  say "Email for members' sign-in codes"
+  echo "Members sign in with a 6-digit code sent by email. A Gmail account can send them: you need its"
+  echo "address and a 16-letter app password from https://myaccount.google.com/apppasswords"
+  read -rp "Gmail address to send from (press Enter to skip for now): " GMAIL
+  GMAIL=$(printf '%s' "$GMAIL" | tr -d '[:space:]')
+  if [ -n "$GMAIL" ]; then
+    read -rp "Its app password (spaces are fine): " GPASS
+    set_env SMTP_HOST smtp.gmail.com
+    set_env SMTP_PORT 587
+    set_env SMTP_USER "$GMAIL"
+    set_env SMTP_PASS "$(printf '%s' "$GPASS" | tr -d '[:space:]')"
+    set_env SMTP_FROM "O! Donut <$GMAIL>"
+    echo "✓ Email set up. After signing in, use Program & automations → Send a test email to check it."
+  fi
 fi
 
 DOMAIN=$(grep -E '^DOMAIN=' .env | cut -d= -f2)
@@ -56,16 +82,18 @@ else
   echo "! $DOMAIN resolves to '${DNS_IP:-nothing}', this server is $SERVER_IP. Add an A record before starting, or HTTPS will fail."
 fi
 
-say "Still to do by hand (see docs/04):"
-grep -qE '^SMTP_HOST=.+' .env || echo "  - SMTP_* settings, so members get sign-in codes"
-grep -qE '^APPLE_TEAM_ID=.+' .env || echo "  - Apple: APPLE_PASS_TYPE_ID, APPLE_TEAM_ID and pass-cert.pem, pass-key.pem, wwdr.pem in ./secrets"
-grep -qE '^GOOGLE_ISSUER_ID=.+' .env || echo "  - Google Wallet (optional): GOOGLE_ISSUER_ID and the service account JSON in ./secrets"
+say "Still to do:"
+grep -qE '^SMTP_HOST=.+' .env || echo "  - Email: run this script again and enter a Gmail address, or fill in SMTP_* in .env. Members can't sign in without it."
+grep -qE '^APPLE_TEAM_ID=.+' .env || echo "  - Apple Wallet (optional): sign in, then Admin → Apple Wallet walks you through it."
+grep -qE '^GOOGLE_ISSUER_ID=.+' .env || echo "  - Google Wallet (optional): GOOGLE_ISSUER_ID and the service account JSON in ./secrets (docs/04)."
 ls secrets/*.pem >/dev/null 2>&1 && chmod 644 secrets/* || true
 
-read -rp $'\nStart the stack now? [y/N] ' go
-if [[ "$go" =~ ^[Yy]$ ]]; then
+read -rp $'\nStart the site now? It takes 5 to 10 minutes the first time. [Y/n] ' go
+if [[ ! "$go" =~ ^[Nn] ]]; then
   docker compose up -d --build
   echo "Waiting for the app to start..."
   for _ in $(seq 1 30); do docker compose exec -T app node -e "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null && break; sleep 2; done
   docker compose exec -T app node dist/cli/doctor.js --online || true
+  say "Done. Open https://$DOMAIN/staff/login"
+  echo "Owner login is in $(pwd)/.env: run  grep ADMIN_ $(pwd)/.env  to see it again."
 fi

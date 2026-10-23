@@ -15,7 +15,20 @@ export type Tx = pg.PoolClient;
 export type Queryable = pg.Pool | pg.PoolClient;
 
 export function createPool(databaseUrl: string, max = 10): Db {
-  return new pg.Pool({ connectionString: databaseUrl, max });
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    max,
+    // Fail a request after 10 s instead of hanging when the database is down or every connection is busy.
+    connectionTimeoutMillis: 10_000,
+    idleTimeoutMillis: 30_000,
+    // A runaway query is stopped rather than holding a connection (and the page) forever.
+    statement_timeout: 60_000,
+    idle_in_transaction_session_timeout: 60_000,
+  });
+  // A connection dropped while idle (e.g. the database restarting) must not crash the whole app;
+  // the pool simply opens a new one next time.
+  pool.on('error', (err) => console.error(`database connection lost: ${err.message}`));
+  return pool;
 }
 
 export async function withTx<T>(db: Db, fn: (tx: Tx) => Promise<T>): Promise<T> {

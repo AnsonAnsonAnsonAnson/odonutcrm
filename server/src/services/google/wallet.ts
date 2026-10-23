@@ -98,6 +98,7 @@ export class GoogleWallet {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`google token ${res.status}: ${await res.text()}`);
     const j = (await res.json()) as { access_token: string; expires_in: number };
@@ -111,6 +112,8 @@ export class GoogleWallet {
       method,
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
+      // A slow Google never holds up a stamp or a campaign for long.
+      signal: AbortSignal.timeout(10_000),
     });
   }
 

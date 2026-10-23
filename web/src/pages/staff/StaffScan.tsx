@@ -122,7 +122,7 @@ export default function StaffScan() {
         <b>{me.program.brand_name} · Counter</b>
         <span className="muted">{me.name}{me.store ? ` @ ${me.store.name}` : ''}</span>
         <span className="spacer" />
-        {me.role !== 'staff' && <Link to="/admin" className="link">Admin</Link>}
+        {me.role !== 'staff' ? <Link to="/admin" className="link">Admin</Link> : <Link to="/staff/security" className="link">Security</Link>}
         <button className="link" onClick={logout}>Sign out</button>
       </header>
       {me.promo && <div className="promo-strip">⭐ {me.promo.label} is on: every purchase stamp counts {me.promo.multiplier}×. Add the real number of items; the bonus is automatic.</div>}

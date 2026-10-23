@@ -25,6 +25,8 @@ const Team = lazy(() => import('./pages/admin/Team'));
 const Tiers = lazy(() => import('./pages/admin/Tiers'));
 const Integrations = lazy(() => import('./pages/admin/Integrations'));
 const Poster = lazy(() => import('./pages/admin/Poster'));
+const Security = lazy(() => import('./pages/admin/Security'));
+const StaffSecurity = lazy(() => import('./pages/admin/Security').then((m) => ({ default: m.StaffSecurityPage })));
 const Privacy = lazy(() => import('./pages/customer/Privacy'));
 
 createRoot(document.getElementById('root')!).render(
@@ -40,6 +42,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/staff/login" element={<StaffLogin />} />
               <Route path="/staff" element={<StaffScan />} />
+              <Route path="/staff/security" element={<StaffSecurity />} />
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="members" element={<Members />} />
@@ -53,6 +56,7 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="integrations" element={<Integrations />} />
                 <Route path="apple-wallet" element={<AppleWallet />} />
                 <Route path="poster" element={<Poster />} />
+                <Route path="security" element={<Security />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

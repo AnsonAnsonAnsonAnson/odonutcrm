@@ -28,7 +28,8 @@ The **go-live check** lists every problem in plain words (certificate expired or
 
 ## 3. Set up the programme (Admin)
 
-- [ ] Sign in at `/staff/login` with the owner account from the setup script; change the password (Team)
+- [ ] Sign in at `/staff/login` with the owner account from the setup script; change the password and turn on two-step sign-in (Admin → Security)
+- [ ] Security setup done: Cloudflare in front, Lightsail snapshots on, two-step sign-in required for managers ([08-security.md](08-security.md))
 - [ ] Team: one account per staff member
 - [ ] Stores: name, address and map coordinates (for the lock-screen reminder near the shop)
 - [ ] Program & automations: colours, rewards, terms; **privacy policy** ("Start from a template", fill in the brackets, have it checked)

@@ -100,6 +100,8 @@ export async function buildApp(
     // The staff counter needs the camera; nothing needs the microphone, location or payments.
     reply.header('permissions-policy', 'camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()');
     if (https) reply.header('strict-transport-security', 'max-age=31536000');
+    // Keep sign-in and admin screens out of Google.
+    if (/^\/(admin|staff|me|api)(\/|$|\?)/.test(req.url)) reply.header('x-robots-tag', 'noindex, nofollow');
     // Personal data must never sit in Cloudflare's or a browser's cache.
     if (req.url.startsWith('/api/') && !reply.hasHeader('cache-control')) reply.header('cache-control', 'no-store');
     return payload;
@@ -185,14 +187,28 @@ export async function buildApp(
   // Serve the built web app (customer, staff and admin SPA) with client-side routing fallback.
   const webDist = resolve(cfg.webDist);
   if (existsSync(webDist)) {
-    await app.register(fastifyStatic, { root: webDist, wildcard: false });
+    await app.register(fastifyStatic, {
+      root: webDist,
+      wildcard: false,
+      // Built scripts and styles have a content hash in their name, so browsers and Cloudflare may
+      // keep them for a year; the page itself and the service worker are always re-checked so an
+      // update shows up straight away.
+      setHeaders: (reply, path) => void reply.header('cache-control', staticCacheControl(path)),
+    });
     app.setNotFoundHandler((req, reply) => {
-      if (req.method === 'GET' && !req.url.startsWith('/api/')) {
-        return reply.type('text/html').sendFile('index.html');
+      if ((req.method === 'GET' || req.method === 'HEAD') && !req.url.startsWith('/api/')) {
+        return reply.type('text/html').header('cache-control', 'no-cache').sendFile('index.html');
       }
       return reply.status(404).send({ error: 'Not found' });
     });
   }
 
   return app;
+}
+
+export function staticCacheControl(path: string): string {
+  const p = path.replace(/\\/g, '/');
+  if (/\/assets\/[^/]+-[\w-]{8,}\.(js|css|woff2?|png|svg|jpg|webp)$/.test(p)) return 'public, max-age=31536000, immutable';
+  if (/\/(index\.html|sw\.js|manifest\.webmanifest)$/.test(p)) return 'no-cache';
+  return 'public, max-age=86400';
 }

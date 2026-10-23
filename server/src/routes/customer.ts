@@ -23,7 +23,10 @@ export async function customerRoutes(app: FastifyInstance) {
     return s.id;
   }
 
-  app.get('/public/config', async () => {
+  app.get('/public/config', async (_req, reply) => {
+    // Shop settings only, nothing personal: the browser may reuse them for 30 seconds (this also
+    // lets the page's early "preload" of this address be used instead of fetched twice).
+    reply.header('cache-control', 'private, max-age=30');
     const p = await getProgram(db);
     return {
       brandName: p.brand_name,
@@ -129,11 +132,15 @@ export async function customerRoutes(app: FastifyInstance) {
         [identity],
       );
       if (!otp || otp.attempts >= 5) throw new HttpError(400, 'That code has expired. Please request a new one.', 'expired');
+      // Count the try before checking it, in one step, so many guesses sent at the same moment
+      // still get only 5 chances between them.
+      const counted = await db.query('UPDATE otp_codes SET attempts = attempts + 1 WHERE id = $1 AND attempts < 5 AND consumed_at IS NULL', [otp.id]);
+      if (!counted.rowCount) throw new HttpError(400, 'That code has expired. Please request a new one.', 'expired');
       if (!safeEqual(otp.code_hash, hmac(cfg.secret, `${identity}:${body.code}`))) {
-        await db.query('UPDATE otp_codes SET attempts = attempts + 1 WHERE id = $1', [otp.id]);
         throw new HttpError(400, 'That code is not right. Please try again.', 'invalid');
       }
-      await db.query('UPDATE otp_codes SET consumed_at = now() WHERE id = $1', [otp.id]);
+      const used = await db.query('UPDATE otp_codes SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL', [otp.id]);
+      if (!used.rowCount) throw new HttpError(400, 'That code has already been used. Please request a new one.', 'expired');
       const customer = body.email
         ? await one<{ id: string }>(db, 'SELECT id FROM customers WHERE email = $1', [body.email])
         : await one<{ id: string }>(db, 'SELECT id FROM customers WHERE phone = $1 ORDER BY last_visit_at DESC NULLS LAST LIMIT 1', [body.phone]);
@@ -278,7 +285,7 @@ Show your card every visit to collect a stamp. Collect ${program.stamps_required
     );
     if (b.firstName || b.lastName) {
       await db.query('UPDATE cards SET updated_at = now() WHERE customer_id = $1', [id]);
-      void notifier.passChanged(id);
+      void notifier.passChanged(id).catch((err) => log(`wallet refresh failed: ${err.message}`));
     }
     return { ok: true };
   });
@@ -306,7 +313,7 @@ Show your card every visit to collect a stamp. Collect ${program.stamps_required
       const id = await requireCustomer(req);
       const { code } = z.object({ code: z.string().trim().min(2).max(40) }).parse(req.body);
       const v = await applyPromoCode(db, id, code);
-      void notifier.passChanged(id);
+      void notifier.passChanged(id).catch((err) => log(`wallet refresh failed: ${err.message}`));
       return { title: v.title, expiresAt: v.expires_at };
     },
   );

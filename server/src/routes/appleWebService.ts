@@ -94,13 +94,13 @@ export async function appleWebServiceRoutes(app: FastifyInstance) {
       .send(pkpass);
   });
 
-  app.post('/v1/log', async (req, reply) => {
-    const body = z.object({ logs: z.array(z.string().max(2000)).max(50) }).safeParse(req.body);
-    if (body.success) {
-      for (const m of body.data.logs) {
-        log(`apple wallet log: ${m}`);
-        await db.query('INSERT INTO apple_logs (message) VALUES ($1)', [m]);
-      }
+  // Anyone can post here (Apple sends no credentials), so it is tightly rate limited and capped.
+  app.post('/v1/log', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const body = z.object({ logs: z.array(z.string()).max(50) }).safeParse(req.body);
+    if (body.success && body.data.logs.length) {
+      const logs = body.data.logs.slice(0, 10).map((m) => m.slice(0, 1000));
+      for (const m of logs) log(`apple wallet log: ${m}`);
+      await db.query('INSERT INTO apple_logs (message) SELECT unnest($1::text[])', [logs]);
     }
     return reply.status(200).send();
   });

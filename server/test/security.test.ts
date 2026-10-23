@@ -70,7 +70,9 @@ test('every response carries the security headers and API answers are never cach
   assert.equal(r.headers['x-frame-options'], 'DENY');
   assert.equal(r.headers['x-content-type-options'], 'nosniff');
   assert.match(String(r.headers['permissions-policy']), /camera=\(self\)/);
-  assert.equal(r.headers['cache-control'], 'no-store');
+  // Anything that can hold personal data is never stored (the public shop settings may be, briefly).
+  const me = await call('GET', '/api/staff/me', { cookie: owner });
+  assert.equal(me.headers['cache-control'], 'no-store');
 });
 
 test('requests from another website are blocked, same-site requests and machine callers are not', async () => {

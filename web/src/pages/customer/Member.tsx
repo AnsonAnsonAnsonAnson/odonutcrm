@@ -20,6 +20,7 @@ interface Me {
   web_push: boolean;
   marketing_opt_in: boolean;
   card_updated_at: string;
+  locale: string;
   tier: null | {
     current: { name: string; perks: string; color: string } | null;
     next: { name: string; perks: string; needed: number } | null;
@@ -76,7 +77,8 @@ export default function Member() {
   }, [load]);
 
   useEffect(() => {
-    if (me && locale) api('/api/me', { method: 'PATCH', body: { locale } }).catch(() => {});
+    // Remember the member's language for messages, only when it actually changed.
+    if (me && locale && me.locale !== locale) api('/api/me', { method: 'PATCH', body: { locale } }).catch(() => {});
   }, [locale, !!me]);
 
   if (!me) return <div className="center-page"><Spinner /></div>;

@@ -1,9 +1,9 @@
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { api } from '../../api';
+import { api, ApiError } from '../../api';
 import { Spinner } from '../../components/ui';
 import { Icon } from '../../components/icons';
 import { useStaff, type StaffMe } from '../../staffSession';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 
 const StaffCtx = createContext<StaffMe | null>(null);
 export const useAdminMe = () => useContext(StaffCtx)!;
@@ -22,6 +22,24 @@ export default function AdminLayout() {
   const me = useStaff();
   const nav = useNavigate();
   const loc = useLocation();
+  const [problem, setProblem] = useState<string | null>(null);
+  // Any admin request that fails without its own error message lands here, so a page never just
+  // spins forever: an expired sign-in goes back to the sign-in page, anything else shows a banner.
+  useEffect(() => {
+    const onFail = (e: PromiseRejectionEvent) => {
+      const err = e.reason;
+      if (err instanceof ApiError && err.status === 401) {
+        e.preventDefault();
+        nav('/staff/login');
+      } else if (err instanceof ApiError || err instanceof TypeError) {
+        e.preventDefault();
+        setProblem(err instanceof ApiError ? err.message : 'Could not reach the server. Check the internet connection and try again.');
+      }
+    };
+    window.addEventListener('unhandledrejection', onFail);
+    return () => window.removeEventListener('unhandledrejection', onFail);
+  }, [nav]);
+  useEffect(() => setProblem(null), [loc.pathname]);
   if (!me) return <div className="center-page"><Spinner /></div>;
   if (me.role === 'staff') {
     return (
@@ -88,6 +106,14 @@ export default function AdminLayout() {
               <Icon name="shield" />
               <span>Protect this account: turn on two-step sign-in so a stolen password alone can't get in.</span>
               <NavLink to="/admin/security" className="btn small">Set it up</NavLink>
+            </div>
+          )}
+          {problem && (
+            <div className="notice warn no-print" role="alert">
+              <Icon name="shield" />
+              <span>{problem}</span>
+              <button className="btn small" onClick={() => location.reload()}>Reload</button>
+              <button className="link" onClick={() => setProblem(null)}>Dismiss</button>
             </div>
           )}
           <Outlet />

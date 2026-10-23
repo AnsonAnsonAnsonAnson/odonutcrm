@@ -1,0 +1,32 @@
+# Used once scripts/cloudflare.sh has switched the site to sit behind Cloudflare.
+# - HTTPS between Cloudflare and this server uses the Cloudflare Origin Certificate in
+#   secrets/cloudflare/ (valid 15 years, so nothing here ever needs renewing).
+# - Only Cloudflare may connect. Anyone who finds this server's own IP address and tries to skip
+#   Cloudflare (and its firewall) is cut off without an answer.
+# - The visitor's real IP comes from Cloudflare's CF-Connecting-IP header, and only from Cloudflare.
+#
+# Cloudflare's address ranges appear twice below, from https://www.cloudflare.com/ips (checked
+# 2026-10-23). They very rarely change; scripts/cloudflare.sh --check-ips compares them with the live list.
+import common.caddy
+
+{
+	servers {
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		client_ip_headers CF-Connecting-IP
+		timeouts {
+			read_header 10s
+			read_body 30s
+			idle 2m
+		}
+	}
+}
+
+{$DOMAIN} {
+	tls /certs/origin.pem /certs/origin-key.pem
+
+	# The same Cloudflare ranges as above.
+	@not_cloudflare not remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	abort @not_cloudflare
+
+	import app
+}

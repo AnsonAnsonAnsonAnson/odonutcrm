@@ -16,6 +16,9 @@ log(
 );
 const stopJobs = cfg.runJobs ? startJobs(db, cfg, app.svc.notifier, log) : () => {};
 
+// Background work (wallet refreshes, emails) that fails must be logged, not take the whole site down.
+process.on('unhandledRejection', (err: any) => app.log.error({ err }, 'unhandled background error'));
+
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, async () => {
     stopJobs();

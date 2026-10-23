@@ -336,10 +336,10 @@ test('admin dashboard, roles and CSV export', async () => {
 
   r = await call('POST', '/api/admin/staff', {
     cookie: staffCookie,
-    body: { email: 'cashier@example.com', name: 'Cashier', role: 'staff', password: 'cashier-pass-123' },
+    body: { email: 'cashier@example.com', name: 'Cashier', role: 'staff', password: 'till drawer sunrise' },
   });
   assert.equal(r.statusCode, 200, r.body);
-  r = await call('POST', '/api/staff/login', { body: { email: 'cashier@example.com', password: 'cashier-pass-123' } });
+  r = await call('POST', '/api/staff/login', { body: { email: 'cashier@example.com', password: 'till drawer sunrise' } });
   const cashier = cookieOf(r, 'od_s');
   r = await call('GET', '/api/admin/dashboard', { cookie: cashier });
   assert.equal(r.statusCode, 403);

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import QRCode from 'qrcode';
 
 export function Donut({ filled, size = 48 }: { filled: boolean; size?: number }) {
   return (
@@ -35,7 +34,15 @@ export function StampGrid({ stamps, required }: { stamps: number; required: numb
 export function Qr({ value, size = 220 }: { value: string; size?: number }) {
   const [src, setSrc] = useState('');
   useEffect(() => {
-    QRCode.toDataURL(value, { margin: 1, width: size * 2, errorCorrectionLevel: 'M' }).then(setSrc);
+    let live = true;
+    // The QR library loads only on pages that show a code.
+    import('qrcode')
+      .then((m) => (m.default ?? m).toDataURL(value, { margin: 1, width: size * 2, errorCorrectionLevel: 'M' }))
+      .then((url) => live && setSrc(url))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
   }, [value, size]);
   return src ? <img src={src} width={size} height={size} alt="QR code" className="qr" /> : <div style={{ width: size, height: size }} />;
 }

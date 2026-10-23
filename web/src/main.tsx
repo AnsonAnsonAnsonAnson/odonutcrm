@@ -5,11 +5,12 @@ import { ConfigProvider } from './config';
 import { I18nProvider } from './i18n';
 import { Spinner } from './components/ui';
 import Join from './pages/customer/Join';
-import Member from './pages/customer/Member';
-import AddToWallet from './pages/customer/AddToWallet';
 import './styles.css';
 
-// Staff and admin screens load on demand so the member site stays light on mobile data.
+// Only the sign-up page is in the first download; everything else loads when it is opened, so the
+// member site starts fast on mobile data.
+const Member = lazy(() => import('./pages/customer/Member'));
+const AddToWallet = lazy(() => import('./pages/customer/AddToWallet'));
 const StaffLogin = lazy(() => import('./pages/staff/StaffLogin'));
 const StaffScan = lazy(() => import('./pages/staff/StaffScan'));
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
@@ -25,7 +26,20 @@ const Team = lazy(() => import('./pages/admin/Team'));
 const Tiers = lazy(() => import('./pages/admin/Tiers'));
 const Integrations = lazy(() => import('./pages/admin/Integrations'));
 const Poster = lazy(() => import('./pages/admin/Poster'));
+const Security = lazy(() => import('./pages/admin/Security'));
+const StaffSecurity = lazy(() => import('./pages/admin/Security').then((m) => ({ default: m.StaffSecurityPage })));
 const Privacy = lazy(() => import('./pages/customer/Privacy'));
+
+// Returning members are sent straight on to their card: fetch those screens in the background
+// once the first page is up, so the hop is instant.
+if (!/^\/(admin|staff)/.test(location.pathname)) {
+  const prefetch = () => {
+    void import('./pages/customer/Member');
+    void import('./pages/customer/AddToWallet');
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(prefetch, { timeout: 3000 });
+  else setTimeout(prefetch, 1500);
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -40,6 +54,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/staff/login" element={<StaffLogin />} />
               <Route path="/staff" element={<StaffScan />} />
+              <Route path="/staff/security" element={<StaffSecurity />} />
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="members" element={<Members />} />
@@ -53,6 +68,7 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="integrations" element={<Integrations />} />
                 <Route path="apple-wallet" element={<AppleWallet />} />
                 <Route path="poster" element={<Poster />} />
+                <Route path="security" element={<Security />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

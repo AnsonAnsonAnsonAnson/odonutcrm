@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { many, one } from '../db.js';
 import { HttpError } from '../lib/auth.js';
 import { hashPassword } from '../lib/crypto.js';
+import { passwordProblem } from '../lib/security.js';
+import { bumpSessions } from '../services/staffSecurity.js';
 import { dashboard } from '../services/analytics.js';
 import { SegmentSchema, countSegment, sendCampaign } from '../services/campaigns.js';
 import { addStamps, customerHistory, customerVouchers, issueVoucher } from '../services/loyalty.js';
@@ -32,7 +34,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/dashboard', async (req) => {
     await manager(req);
-    return dashboard(db, cfg.apple?.passTypeId ?? null);
+    return dashboard(db, cfg.apple?.passTypeId ?? null, cfg.tzOffsetHours);
   });
 
   // ---------- Customers ----------
@@ -54,7 +56,8 @@ export async function adminRoutes(app: FastifyInstance) {
     const params: unknown[] = [];
     let where = 'true';
     if (q.q) {
-      params.push(`%${q.q.toLowerCase()}%`);
+      // Typed % and _ are matched literally, not as wildcards.
+      params.push(`%${q.q.toLowerCase().replace(/[\\%_]/g, (ch) => '\\' + ch)}%`);
       where = `(lower(c.email) LIKE $1 OR lower(c.first_name || ' ' || c.last_name) LIKE $1 OR c.phone LIKE $1)`;
     }
     params.push((q.page - 1) * 50);
@@ -528,7 +531,8 @@ export async function adminRoutes(app: FastifyInstance) {
     await owner(req);
     return many(
       db,
-      `SELECT u.id, u.email, u.name, u.role, u.store_id, u.active, u.last_login_at, s.name AS store_name
+      `SELECT u.id, u.email, u.name, u.role, u.store_id, u.active, u.last_login_at, s.name AS store_name,
+              u.totp_enabled_at IS NOT NULL AS two_step, (u.locked_until > now()) AS locked
          FROM staff_users u LEFT JOIN stores s ON s.id = u.store_id ORDER BY u.created_at`,
     );
   });
@@ -536,13 +540,15 @@ export async function adminRoutes(app: FastifyInstance) {
     await owner(req);
     const b = z
       .object({
-        email: z.string().trim().toLowerCase().email(),
+        email: z.string().trim().toLowerCase().email().max(200),
         name: z.string().trim().min(1).max(60),
         role: z.enum(['owner', 'manager', 'staff']),
         storeId: uuid.nullable().default(null),
-        password: z.string().min(10, 'Use at least 10 characters').max(200),
+        password: z.string().max(200),
       })
       .parse(req.body);
+    const problem = passwordProblem(b.password, b.email);
+    if (problem) throw new HttpError(400, problem);
     return one(
       db,
       `INSERT INTO staff_users (email, name, role, store_id, password_hash) VALUES ($1,$2,$3,$4,$5)
@@ -558,17 +564,69 @@ export async function adminRoutes(app: FastifyInstance) {
         role: z.enum(['owner', 'manager', 'staff']).optional(),
         storeId: uuid.nullable().optional(),
         active: z.boolean().optional(),
-        password: z.string().min(10).max(200).optional(),
+        password: z.string().max(200).optional(),
+        resetTwoStep: z.literal(true).optional(),
+        unlock: z.literal(true).optional(),
+        signOut: z.literal(true).optional(),
       })
       .parse(req.body);
     if (id === me.id && (b.active === false || (b.role && b.role !== 'owner'))) {
       throw new HttpError(400, 'You cannot demote or disable your own account');
     }
+    const target = await one<{ email: string }>(db, 'SELECT email FROM staff_users WHERE id = $1', [id]);
+    if (!target) throw new HttpError(404, 'Not found');
+    if (b.password !== undefined) {
+      const problem = passwordProblem(b.password, target.email);
+      if (problem) throw new HttpError(400, problem);
+    }
     await db.query(
       `UPDATE staff_users SET role = coalesce($2, role), store_id = CASE WHEN $3 THEN $4::uuid ELSE store_id END,
-              active = coalesce($5, active), password_hash = coalesce($6, password_hash) WHERE id = $1`,
+              active = coalesce($5, active), password_hash = coalesce($6, password_hash)
+        WHERE id = $1`,
       [id, b.role ?? null, b.storeId !== undefined, b.storeId ?? null, b.active ?? null, b.password ? await hashPassword(b.password) : null],
     );
+    if (b.resetTwoStep) {
+      await db.query(`UPDATE staff_users SET totp_secret_enc = NULL, totp_enabled_at = NULL, totp_last_step = NULL, recovery_codes = '{}' WHERE id = $1`, [id]);
+    }
+    if (b.unlock || b.password) await db.query('UPDATE staff_users SET failed_logins = 0, locked_until = NULL WHERE id = $1', [id]);
+    // A new password, a disabled account or an explicit sign-out ends that person's open sessions.
+    if ((b.password || b.active === false || b.signOut || b.resetTwoStep) && id !== me.id) await bumpSessions(db, id);
     return { ok: true };
+  });
+
+  // ---------- Security ----------
+  app.get('/security', async (req) => {
+    await owner(req);
+    const p = await one<{ require_two_step: boolean }>(db, 'SELECT require_two_step FROM program WHERE id = 1');
+    const missing = await many(
+      db,
+      `SELECT name, email, role FROM staff_users WHERE active AND role IN ('owner','manager') AND totp_enabled_at IS NULL ORDER BY name`,
+    );
+    return { requireTwoStep: !!p?.require_two_step, managersWithoutTwoStep: missing };
+  });
+  app.patch('/security', async (req) => {
+    const me = await owner(req);
+    const { requireTwoStep } = z.object({ requireTwoStep: z.boolean() }).parse(req.body);
+    if (requireTwoStep) {
+      const self = await one<{ on: boolean }>(db, 'SELECT totp_enabled_at IS NOT NULL AS on FROM staff_users WHERE id = $1', [me.id]);
+      if (!self?.on) throw new HttpError(400, 'Turn on two-step sign-in for your own account first, so you are not locked out.');
+    }
+    await db.query('UPDATE program SET require_two_step = $1, updated_at = now() WHERE id = 1', [requireTwoStep]);
+    return { ok: true };
+  });
+  app.get('/activity-log', async (req) => {
+    await owner(req);
+    const q = z
+      .object({ limit: z.coerce.number().int().min(1).max(500).default(100), before: z.coerce.number().int().optional(), kind: z.enum(['all', 'sign-in', 'changes']).default('all') })
+      .parse(req.query);
+    return many(
+      db,
+      `SELECT a.id, a.at, a.action, a.target, a.ip, a.user_agent, a.details, coalesce(u.name, a.actor) AS who, u.email
+         FROM audit_log a LEFT JOIN staff_users u ON u.id = a.staff_id
+        WHERE ($2::bigint IS NULL OR a.id < $2)
+          AND ($3 = 'all' OR ($3 = 'sign-in') = (a.action LIKE 'login.%' OR a.action = 'logout'))
+        ORDER BY a.id DESC LIMIT $1`,
+      [q.limit, q.before ?? null, q.kind],
+    );
   });
 }

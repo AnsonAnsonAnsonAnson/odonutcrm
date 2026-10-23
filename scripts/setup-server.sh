@@ -73,11 +73,22 @@ if ! grep -qE '^SMTP_HOST=.+' .env; then
 fi
 
 DOMAIN=$(grep -E '^DOMAIN=' .env | cut -d= -f2)
+grep -qE '^CADDY_MODE=' .env || printf '\n# direct, or cloudflare once scripts/cloudflare.sh has run\nCADDY_MODE=direct\n' >> .env
 say "Checking DNS for $DOMAIN"
 SERVER_IP=$(curl -fsS https://api.ipify.org 2>/dev/null || echo "?")
-DNS_IP=$(getent hosts "$DOMAIN" | awk '{print $1}' | head -1 || true)
+DNS_IP=$(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | head -1 || true)
+BEHIND_CLOUDFLARE=false
 if [ -n "$DNS_IP" ] && [ "$DNS_IP" = "$SERVER_IP" ]; then
   echo "✓ $DOMAIN points at this server ($SERVER_IP)"
+elif [ -n "$DNS_IP" ] && python3 - "$DNS_IP" <<'PY' 2>/dev/null
+import ipaddress, re, sys
+ip = ipaddress.ip_address(sys.argv[1])
+ranges = re.search(r'trusted_proxies static (.*)', open('caddy/cloudflare.Caddyfile').read()).group(1).split()
+sys.exit(0 if any(ip in ipaddress.ip_network(r) for r in ranges) else 1)
+PY
+then
+  BEHIND_CLOUDFLARE=true
+  echo "✓ $DOMAIN goes through Cloudflare (orange cloud)."
 else
   echo "! $DOMAIN resolves to '${DNS_IP:-nothing}', this server is $SERVER_IP. Add an A record before starting, or HTTPS will fail."
 fi
@@ -86,10 +97,16 @@ say "Still to do:"
 grep -qE '^SMTP_HOST=.+' .env || echo "  - Email: run this script again and enter a Gmail address, or fill in SMTP_* in .env. Members can't sign in without it."
 grep -qE '^APPLE_TEAM_ID=.+' .env || echo "  - Apple Wallet (optional): sign in, then Admin → Apple Wallet walks you through it."
 grep -qE '^GOOGLE_ISSUER_ID=.+' .env || echo "  - Google Wallet (optional): GOOGLE_ISSUER_ID and the service account JSON in ./secrets (docs/04)."
-ls secrets/*.pem >/dev/null 2>&1 && chmod 644 secrets/* || true
+# Wallet certificate files must be readable by the app, which runs as an ordinary user.
+find secrets -maxdepth 1 -type f -exec chmod 644 {} + 2>/dev/null || true
 
 read -rp $'\nStart the site now? It takes 5 to 10 minutes the first time. [Y/n] ' go
 if [[ ! "$go" =~ ^[Nn] ]]; then
+  if $BEHIND_CLOUDFLARE && ! grep -q '^CADDY_MODE=cloudflare' .env; then
+    echo
+    echo "$DOMAIN is behind Cloudflare, so this server needs a Cloudflare Origin Certificate first."
+    bash scripts/cloudflare.sh || true
+  fi
   docker compose up -d --build
   echo "Waiting for the app to start..."
   for _ in $(seq 1 30); do docker compose exec -T app node -e "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" 2>/dev/null && break; sleep 2; done

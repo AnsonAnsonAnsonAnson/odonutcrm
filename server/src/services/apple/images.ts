@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,9 +8,37 @@ import { fileURLToPath } from 'node:url';
 // PASS_ASSET_DIR overrides it where the code runs bundled (e.g. Netlify Functions).
 const assetDir = () => process.env.PASS_ASSET_DIR ?? join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'assets', 'pass');
 
+const assetCache = new Map<string, { mtime: number; buf: Buffer }>();
+
+// Read once and kept in memory; a replaced file (newer modified time) is picked up on the next pass.
 function asset(name: string): Buffer | null {
   const p = join(assetDir(), name);
-  return existsSync(p) ? readFileSync(p) : null;
+  let mtime: number;
+  try {
+    mtime = statSync(p).mtimeMs;
+  } catch {
+    assetCache.delete(p);
+    return null;
+  }
+  const hit = assetCache.get(p);
+  if (hit && hit.mtime === mtime) return hit.buf;
+  const buf = readFileSync(p);
+  assetCache.set(p, { mtime, buf });
+  return buf;
+}
+
+/** Rendered images are small and few, so each one is drawn once and reused for every pass. */
+const imageCache = new Map<string, Promise<Buffer>>();
+function cached(key: string, render: () => Promise<Buffer>): Promise<Buffer> {
+  const k = `${key}|${['icon.png', 'logo.png', 'stamp-on.png', 'stamp-off.png'].map((n) => assetCache.get(join(assetDir(), n))?.mtime ?? 0).join(',')}`;
+  let hit = imageCache.get(k);
+  if (!hit) {
+    if (imageCache.size > 100) imageCache.clear();
+    hit = render();
+    imageCache.set(k, hit);
+    hit.catch(() => imageCache.delete(k));
+  }
+  return hit;
 }
 
 function donutSvg(size: number, filled: boolean, icing: string): string {
@@ -63,7 +91,9 @@ export async function renderStrip(opts: {
   icing: string;
   scale: 1 | 2 | 3;
 }): Promise<Buffer> {
-  const key = JSON.stringify(opts);
+  // Includes the custom stamp art's version, so replaced art shows without a restart.
+  const art = ['stamp-on.png', 'stamp-off.png'].map((n) => (asset(n) ? assetCache.get(join(assetDir(), n))!.mtime : 0));
+  const key = JSON.stringify(opts) + art.join(',');
   const hit = stripCache.get(key);
   if (hit) return hit;
   const W = 375 * opts.scale;
@@ -104,16 +134,24 @@ function escapeXml(s: string) {
   return s.replace(/[<>&'"]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[ch]!);
 }
 
-export async function renderLogo(scale: 1 | 2 | 3, brandName: string, color: string): Promise<Buffer> {
+export function renderLogo(scale: 1 | 2 | 3, brandName: string, color: string): Promise<Buffer> {
   const custom = asset('logo.png');
+  return cached(`logo|${scale}|${brandName}|${color}|${!!custom}`, () => drawLogo(scale, brandName, color, custom));
+}
+
+async function drawLogo(scale: 1 | 2 | 3, brandName: string, color: string, custom: Buffer | null): Promise<Buffer> {
   const w = 160 * scale;
   const h = 50 * scale;
   if (custom) return sharp(custom).resize(w, h, { fit: 'inside' }).png().toBuffer();
   return sharp(Buffer.from(logoSvg(w, h, brandName, color))).png().toBuffer();
 }
 
-export async function renderIcon(size: number, icing: string): Promise<Buffer> {
+export function renderIcon(size: number, icing: string): Promise<Buffer> {
   const custom = asset('icon.png');
+  return cached(`icon|${size}|${icing}|${!!custom}`, () => drawIcon(size, icing, custom));
+}
+
+async function drawIcon(size: number, icing: string, custom: Buffer | null): Promise<Buffer> {
   if (custom) return sharp(custom).resize(size, size, { fit: 'cover' }).png().toBuffer();
   return sharp(Buffer.from(donutSvg(size, true, icing))).png().toBuffer();
 }

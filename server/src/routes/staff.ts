@@ -225,7 +225,7 @@ export async function staffRoutes(app: FastifyInstance) {
     const digits = q.replace(/[^\d]/g, '');
     const rows = await many<{ id: string }>(
       db,
-      `SELECT id FROM customers WHERE lower(email) = lower($1) OR ($2 <> '' AND right(regexp_replace(coalesce(phone,''), '\\D', '', 'g'), 8) = right($2, 8)) LIMIT 5`,
+      `SELECT id FROM customers WHERE email = lower($1) OR ($2 <> '' AND right(regexp_replace(coalesce(phone,''), '\\D', '', 'g'), 8) = right($2, 8)) LIMIT 5`,
       [q, digits.length >= 8 ? digits : ''],
     );
     return Promise.all(rows.map((r) => customerSummary(svc, r.id)));

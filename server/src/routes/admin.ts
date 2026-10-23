@@ -34,7 +34,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/dashboard', async (req) => {
     await manager(req);
-    return dashboard(db, cfg.apple?.passTypeId ?? null);
+    return dashboard(db, cfg.apple?.passTypeId ?? null, cfg.tzOffsetHours);
   });
 
   // ---------- Customers ----------
@@ -56,7 +56,8 @@ export async function adminRoutes(app: FastifyInstance) {
     const params: unknown[] = [];
     let where = 'true';
     if (q.q) {
-      params.push(`%${q.q.toLowerCase()}%`);
+      // Typed % and _ are matched literally, not as wildcards.
+      params.push(`%${q.q.toLowerCase().replace(/[\\%_]/g, (ch) => '\\' + ch)}%`);
       where = `(lower(c.email) LIKE $1 OR lower(c.first_name || ' ' || c.last_name) LIKE $1 OR c.phone LIKE $1)`;
     }
     params.push((q.page - 1) * 50);

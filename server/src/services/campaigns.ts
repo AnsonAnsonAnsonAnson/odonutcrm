@@ -76,15 +76,22 @@ export async function sendCampaign(db: Db, notifier: Notifier, campaignId: strin
     params,
   );
   let sent = 0;
-  for (const r of recipients) {
-    try {
-      if (claimed.template_id) await issueVoucher(db, r.id, claimed.template_id, 'campaign', claimed.id);
-      await notifier.notify(r.id, { kind: 'campaign', title: claimed.name, body: claimed.message, campaignId: claimed.id });
-      sent++;
-    } catch (err: any) {
-      log(`campaign ${claimed.id} recipient ${r.id} failed: ${err.message}`);
+  let next = 0;
+  // A few members at a time: much faster than one by one, while leaving database connections
+  // free for the shop counter.
+  const worker = async () => {
+    while (next < recipients.length) {
+      const r = recipients[next++];
+      try {
+        if (claimed.template_id) await issueVoucher(db, r.id, claimed.template_id, 'campaign', claimed.id);
+        await notifier.notify(r.id, { kind: 'campaign', title: claimed.name, body: claimed.message, campaignId: claimed.id });
+        sent++;
+      } catch (err: any) {
+        log(`campaign ${claimed.id} recipient ${r.id} failed: ${err.message}`);
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, recipients.length) }, worker));
   await db.query(`UPDATE campaigns SET status = 'sent', sent_at = now(), recipients = $2 WHERE id = $1`, [claimed.id, sent]);
   log(`campaign ${claimed.name} sent to ${sent}`);
   return sent;

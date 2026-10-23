@@ -5,6 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 git pull --ff-only
+# Picks up any new server protections; changes nothing that is already set.
+[ "$(id -u)" = 0 ] && bash scripts/harden-server.sh >/dev/null
 docker compose up -d --build
 # Old app images pile up with every update; clear them so the disk doesn't fill.
 docker image prune -f >/dev/null

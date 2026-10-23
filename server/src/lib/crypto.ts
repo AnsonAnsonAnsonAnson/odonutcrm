@@ -1,4 +1,4 @@
-import { randomBytes, randomInt, scrypt as scryptCb, timingSafeEqual, createHmac } from 'node:crypto';
+import { randomBytes, randomInt, scrypt as scryptCb, timingSafeEqual, createHmac, createHash, createCipheriv, createDecipheriv } from 'node:crypto';
 import { promisify } from 'node:util';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
@@ -42,4 +42,24 @@ export async function verifyPassword(password: string, stored: string): Promise<
   const expected = Buffer.from(keyB64, 'base64');
   const key = await scrypt(password, Buffer.from(saltB64, 'base64'), expected.length);
   return timingSafeEqual(key, expected);
+}
+
+function sealKey(secret: string, purpose: string): Buffer {
+  return createHash('sha256').update(`${purpose}:${secret}`).digest();
+}
+
+/** Encrypts a small value for storage (AES-256-GCM, key derived from APP_SECRET and a purpose label). */
+export function seal(secret: string, purpose: string, plain: string): string {
+  const iv = randomBytes(12);
+  const c = createCipheriv('aes-256-gcm', sealKey(secret, purpose), iv);
+  const body = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
+  return ['v1', iv.toString('base64'), c.getAuthTag().toString('base64'), body.toString('base64')].join('.');
+}
+
+export function unseal(secret: string, purpose: string, sealed: string): string {
+  const [v, iv, tag, body] = sealed.split('.');
+  if (v !== 'v1') throw new Error('Unknown format');
+  const d = createDecipheriv('aes-256-gcm', sealKey(secret, purpose), Buffer.from(iv, 'base64'));
+  d.setAuthTag(Buffer.from(tag, 'base64'));
+  return Buffer.concat([d.update(Buffer.from(body, 'base64')), d.final()]).toString('utf8');
 }

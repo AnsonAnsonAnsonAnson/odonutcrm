@@ -68,6 +68,15 @@ export async function customerRoutes(app: FastifyInstance) {
         );
         if ((today?.n ?? 0) >= 5) throw new HttpError(429, 'Too many codes today. Please sign in with your email.');
       }
+      // A daily cap per address too, so nobody can flood a member's inbox from many IPs.
+      const daily = await one<{ n: number }>(
+        db,
+        `SELECT count(*)::int AS n FROM otp_codes WHERE identity = $1 AND created_at > now() - interval '1 day'`,
+        [identity],
+      );
+      if (channel === 'email' && (daily?.n ?? 0) >= 10) {
+        throw new HttpError(429, 'Too many codes for this email today. Please try again tomorrow, or ask the shop for help.');
+      }
       const recent = await one(
         db,
         `SELECT 1 FROM otp_codes WHERE identity = $1 AND created_at > now() - interval '45 seconds'`,

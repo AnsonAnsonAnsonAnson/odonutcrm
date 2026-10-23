@@ -8,12 +8,17 @@ function pct(a: number, b: number) {
 
 function Bars({ data, field, label }: { data: any[]; field: string; label: string }) {
   const max = Math.max(1, ...data.map((d) => d[field]));
+  const total = data.reduce((n, d) => n + d[field], 0);
   return (
     <div className="chart">
-      <h3>{label}</h3>
-      <div className="bars">
+      <div className="row between">
+        <h3>{label}</h3>
+        <span className="chart-total">{total} <small>in 30 days</small></span>
+      </div>
+      <div className="chart-bars">
+        {total === 0 && <p className="chart-empty">Nothing yet. This fills in as members join and visit.</p>}
         {data.map((d) => (
-          <div key={d.day} className="bar" title={`${d.day}: ${d[field]}`}>
+          <div key={d.day} className="chart-bar" title={`${d.day}: ${d[field]}`}>
             <div style={{ height: `${(d[field] / max) * 100}%` }} />
           </div>
         ))}
@@ -62,6 +67,7 @@ export default function Dashboard() {
         <div className="panel">
           <h3>Where members are on the card</h3>
           <p className="muted">Members close to a reward are your best push targets.</p>
+          {d.distribution.length === 0 && <p className="empty">No cards yet.</p>}
           {d.distribution.map((x: any) => (
             <div key={x.stamps} className="hbar">
               <span>{x.stamps} stamps</span>
@@ -72,9 +78,11 @@ export default function Dashboard() {
         </div>
         <div className="panel">
           <h3>Monthly cohorts</h3>
+          <p className="muted">How many members from each month came back.</p>
           <table>
             <thead><tr><th>Joined</th><th>Members</th><th>Came back</th><th>Still visiting after 30 days</th></tr></thead>
             <tbody>
+              {d.cohorts.length === 0 && <tr><td colSpan={4} className="empty">No members yet.</td></tr>}
               {d.cohorts.map((c: any) => (
                 <tr key={c.cohort}><td>{c.cohort}</td><td>{c.members}</td><td>{pct(c.returned, c.members)}</td><td>{pct(c.retained_30d, c.members)}</td></tr>
               ))}
@@ -84,6 +92,7 @@ export default function Dashboard() {
           <table>
             <thead><tr><th>Source</th><th>Issued</th><th>Redeemed</th><th>Rate</th></tr></thead>
             <tbody>
+              {d.sources.length === 0 && <tr><td colSpan={4} className="empty">No vouchers issued in the last 90 days.</td></tr>}
               {d.sources.map((s: any) => (
                 <tr key={s.source}><td>{s.source.replace('_', ' ')}</td><td>{s.issued}</td><td>{s.redeemed}</td><td>{pct(s.redeemed, s.issued)}</td></tr>
               ))}

@@ -9,6 +9,7 @@ export interface StaffMe {
   storeId: string | null;
   store: { id: string; name: string } | null;
   promo: { multiplier: number; label: string; endsAt: string | null } | null;
+  security: { twoStep: boolean; twoStepRequired: boolean };
   program: { stamps_required: number; max_stamps_per_scan: number; brand_name: string; background_color: string; foreground_color: string };
 }
 

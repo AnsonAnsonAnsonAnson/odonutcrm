@@ -19,6 +19,7 @@ A self-hosted loyalty system in the style of Wanpo's Juicysuite member club: cus
 5. [Staff guide: running the club at the counter](docs/05-staff-guide.md)
 6. [Go-live checklist](docs/06-go-live-checklist.md)
 7. [Test run on Netlify](docs/07-netlify-test.md) (no longer used: the club is self-hosted)
+8. [Security: Amazon Lightsail + Cloudflare](docs/08-security.md), step by step
 
 ## Deploy (production)
 
@@ -28,13 +29,13 @@ On a fresh Ubuntu server (a US$6 VPS is enough), with a domain pointing at it, o
 curl -fsSL https://raw.githubusercontent.com/AnsonAnsonAnsonAnson/odonutcrm/main/scripts/install.sh -o install.sh && sudo bash install.sh
 ```
 
-It installs Docker, adds swap on servers under 2 GB, downloads the app to `/opt/odonut` and runs `scripts/setup-server.sh`, which creates `.env` with random secrets and push keys, asks for a Gmail address and app password for sign-in codes, checks DNS, starts the stack and runs the go-live check. Apple Wallet is then set up from Admin → Apple Wallet. Later updates: `sudo bash /opt/odonut/scripts/update.sh`.
+It installs Docker, adds swap on servers under 2 GB, downloads the app to `/opt/odonut`, locks the server down (automatic security updates, firewall, key-only SSH, fail2ban) and runs `scripts/setup-server.sh`, which creates `.env` with random secrets and push keys, asks for a Gmail address and app password for sign-in codes, checks DNS, starts the stack and runs the go-live check. Apple Wallet is then set up from Admin → Apple Wallet. Later updates: `sudo bash /opt/odonut/scripts/update.sh`.
 
 On a server that already has Docker, run `bash scripts/setup-server.sh` from a checkout instead.
 
 Prefer to do it by hand? `cp .env.example .env`, fill it in, `docker compose up -d --build`.
 
-The stack runs Postgres, the app, Caddy and a nightly backup to `./backups` (30 days kept). Caddy obtains the HTTPS certificate automatically. The app migrates the database and creates the owner account on first start. Open `https://your-domain/staff/login` to sign in.
+The stack runs Postgres, the app, Caddy and a nightly backup to `./backups` (30 days kept). Caddy obtains the HTTPS certificate automatically. To put Cloudflare in front, run `sudo bash scripts/cloudflare.sh` (it installs a Cloudflare Origin Certificate and makes the server answer only Cloudflare); [docs/08-security.md](docs/08-security.md) has every step. The app migrates the database and creates the owner account on first start. Open `https://your-domain/staff/login` to sign in.
 
 ## Develop locally
 
@@ -58,7 +59,7 @@ bash server/scripts/make-test-certs.sh /tmp/odcerts
 TEST_DATABASE_URL=postgres://localhost/odonut_test TEST_CERT_DIR=/tmp/odcerts npm test
 ```
 
-25 end-to-end scenarios cover sign-up, stamping rules, rewards, redemption, promo codes, referrals, signed pass contents, the Apple Wallet web service with push, campaigns, automations, roles and data deletion, plus tiers, SMS sign-in, the POS API, the near-reward nudge, the APNs client (against a local HTTP/2 TLS mock), the Google Wallet client (mocked API), double-stamp windows, the Apple certificate checks and the go-live check. `.github/workflows/ci.yml` runs the same on GitHub once the code is pushed there.
+37 end-to-end scenarios cover sign-up, stamping rules, rewards, redemption, promo codes, referrals, signed pass contents, the Apple Wallet web service with push, campaigns, automations, roles and data deletion, plus tiers, SMS sign-in, the POS API, the near-reward nudge, the APNs client (against a local HTTP/2 TLS mock), the Google Wallet client (mocked API), double-stamp windows, the Apple certificate checks, the go-live check, and security (two-step sign-in, lockout, sign-out-everywhere, cross-site request blocking, headers, the activity log). `.github/workflows/ci.yml` runs the same on GitHub once the code is pushed there.
 
 ## Layout
 
@@ -71,7 +72,9 @@ server/            Fastify API (TypeScript)
   test/            end-to-end tests
 web/               React app (member, staff, admin)
 docs/              research, plan, launch, setup
-Dockerfile, docker-compose.yml, Caddyfile, .env.example
+caddy/             web server configs: direct (Let's Encrypt) and Cloudflare-only
+scripts/           install, setup, update, harden-server, cloudflare
+Dockerfile, docker-compose.yml, .env.example
 ```
 
 ## Default programme (change in Admin → Program & automations)

@@ -1,0 +1,33 @@
+# Shared by both Caddy setups (direct.Caddyfile and cloudflare.Caddyfile).
+
+(timeouts) {
+	servers {
+		# Slow-loris protection: a visitor gets 10 s to send the request headers and 30 s for the body.
+		timeouts {
+			read_header 10s
+			read_body 30s
+			idle 2m
+		}
+	}
+}
+
+(app) {
+	encode zstd gzip
+	# The app sets its own security headers (server/src/app.ts); here we only hide what runs the site.
+	header -Server
+	request_body {
+		max_size 1MB
+	}
+	reverse_proxy app:8080 {
+		# Hand the app one clean visitor IP (worked out above), never a chain the visitor could have faked.
+		header_up X-Forwarded-For {client_ip}
+		header_up -CF-Connecting-IP
+		transport http {
+			response_header_timeout 60s
+		}
+	}
+	log {
+		output stdout
+		format console
+	}
+}

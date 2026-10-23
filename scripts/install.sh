@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # One-command install of O! Donut Club on a fresh Ubuntu server (22.04 or newer). Paste this on the server:
 #   curl -fsSL https://raw.githubusercontent.com/AnsonAnsonAnsonAnson/odonutcrm/main/scripts/install.sh -o install.sh && sudo bash install.sh
-# It installs git and Docker, adds swap on small servers, downloads the app to /opt/odonut and
-# runs scripts/setup-server.sh, which asks a few questions and starts the site. Safe to run again.
+# It installs git and Docker, adds swap on small servers, downloads the app to /opt/odonut, locks
+# the server down (scripts/harden-server.sh) and runs scripts/setup-server.sh, which asks a few questions and starts the site. Safe to run again.
 set -euo pipefail
 
 REPO=${ODONUT_REPO:-https://github.com/AnsonAnsonAnsonAnson/odonutcrm.git}
@@ -34,12 +34,6 @@ if [ "$mem_mb" -lt 1900 ] && ! swapon --show | grep -q .; then
   grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-# Some server images switch the firewall on with only SSH allowed; open the web ports.
-if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
-  ufw allow 80/tcp >/dev/null
-  ufw allow 443 >/dev/null
-fi
-
 if [ -d "$DIR/.git" ]; then
   say "Updating the app in $DIR"
   git -C "$DIR" pull --ff-only
@@ -49,4 +43,6 @@ else
 fi
 
 cd "$DIR"
+# Automatic security updates, firewall, SSH and kernel hardening.
+bash scripts/harden-server.sh
 exec bash scripts/setup-server.sh

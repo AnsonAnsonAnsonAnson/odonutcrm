@@ -10,6 +10,7 @@ import { loadConfig } from '../config.js';
 import { createPool, one } from '../db.js';
 import { syncStoredCredentials } from '../services/apple/credentials.js';
 import { checkAppleCert } from '../lib/certs.js';
+import { verifyPassword } from '../lib/crypto.js';
 
 type Level = 'ok' | 'warn' | 'fail';
 const results: { level: Level; area: string; msg: string }[] = [];
@@ -37,6 +38,18 @@ async function main() {
       add('fail', 'Address', `Could not reach ${cfg.publicUrl}/healthz (${e.cause?.code ?? e.message}). Check DNS and that ports 80 and 443 are open.`);
     }
   }
+  if (cfg.isProd) {
+    if (process.env.CADDY_MODE === 'cloudflare') add('ok', 'Security', 'Behind Cloudflare; the server only answers Cloudflare');
+    else add('warn', 'Security', 'Not behind Cloudflare yet (optional, recommended): see docs/08-security.md');
+  }
+  if (online && cfg.publicUrl.startsWith('https://')) {
+    const r = await fetch(`${cfg.publicUrl}/`, { signal: AbortSignal.timeout(8000) }).catch(() => null);
+    if (r) {
+      const missing = ['content-security-policy', 'strict-transport-security', 'x-frame-options'].filter((h) => !r.headers.get(h));
+      add(missing.length ? 'warn' : 'ok', 'Security', missing.length ? `Security headers missing on the public site: ${missing.join(', ')}` : 'Security headers present on the public site');
+      if (process.env.CADDY_MODE === 'cloudflare' && !r.headers.get('cf-ray')) add('fail', 'Security', 'CADDY_MODE is cloudflare but the site is not answering through Cloudflare');
+    }
+  }
   if (cfg.secret.length < 32) add('fail', 'Settings', 'APP_SECRET is short; use openssl rand -hex 32');
 
   // Database
@@ -52,6 +65,22 @@ async function main() {
     if (!p?.privacy_policy.trim()) add('warn', 'Content', 'No privacy policy yet (Admin → Program & automations)');
     const stores = await one<{ n: number }>(db, 'SELECT count(*)::int AS n FROM stores WHERE active AND latitude IS NOT NULL');
     if (!stores?.n) add('warn', 'Content', 'No store has map coordinates, so the lock-screen reminder near the shop is off (Admin → Stores)');
+
+    // Security
+    const team = await db.query<{ email: string; role: string; two_step: boolean; password_hash: string }>(
+      `SELECT email, role, totp_enabled_at IS NOT NULL AS two_step, password_hash FROM staff_users WHERE active AND role IN ('owner','manager')`,
+    );
+    const sec = await one<{ require_two_step: boolean }>(db, 'SELECT require_two_step FROM program WHERE id = 1');
+    const noTwoStep = team.rows.filter((u) => !u.two_step).map((u) => u.email);
+    if (noTwoStep.length) add('warn', 'Security', `Two-step sign-in is off for ${noTwoStep.join(', ')} (Admin → Security)`);
+    else if (team.rows.length) add('ok', 'Security', 'Every owner and manager uses two-step sign-in');
+    if (team.rows.length && !sec?.require_two_step) add('warn', 'Security', 'Two-step sign-in is not required yet (Admin → Security → "Require two-step sign-in")');
+    if (cfg.adminPassword) {
+      const owner = team.rows.find((u) => u.email === cfg.adminEmail?.toLowerCase());
+      if (owner && (await verifyPassword(cfg.adminPassword, owner.password_hash))) {
+        add('warn', 'Security', 'The owner still uses the first password from .env. Change it in Admin → Security.');
+      }
+    }
   } catch (e: any) {
     add('fail', 'Database', `${e.message}. Start the app once so it can migrate, then run this again.`);
   } finally {

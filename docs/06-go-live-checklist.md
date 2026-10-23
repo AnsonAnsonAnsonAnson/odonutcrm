@@ -62,3 +62,4 @@ The **go-live check** lists every problem in plain words (certificate expired or
 - [ ] Copy `./backups` off the server (nightly), and test one restore
 - [ ] Calendar reminder a month before the Apple certificate expires (the admin also warns 30 days ahead)
 - [ ] Re-run the go-live check after any change to `.env`
+- [ ] Updating to a new version: `sudo bash /opt/odonut/scripts/update.sh`. It saves a copy of the database to `backups/odonut-before-update-…sql.gz` first, waits for the site to come back and runs the go-live check.

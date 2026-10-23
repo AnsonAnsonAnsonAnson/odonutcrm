@@ -74,10 +74,14 @@ services:
       - sh
       - -c
       - |
+        # Backups hold members' personal data: readable by the server admin only.
+        umask 077
         while true; do
           f=/backups/odonut-$$(date +%Y%m%d-%H%M).sql.gz
           if pg_dump --no-owner --clean --if-exists | gzip > "$$f.tmp"; then mv "$$f.tmp" "$$f"; echo "backup ok $$f"; else rm -f "$$f.tmp"; echo "backup FAILED"; fi
           find /backups -name 'odonut-*.sql.gz' -mtime +30 -delete
+          # Copies taken by scripts/update.sh are kept for 90 days.
+          find /backups -name 'odonut-before-update-*.sql.gz' -mtime +90 -delete
           sleep 86400
         done
 
@@ -95,6 +99,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      # HTTP/3 (faster on mobile) when visitors reach this server directly.
+      - "443:443/udp"
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
     volumes:

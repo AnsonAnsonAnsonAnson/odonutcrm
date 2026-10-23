@@ -105,7 +105,13 @@ Each of these is one switch. Cloudflare moves menus around now and then; if a na
 1. **Bot Fight Mode**: leave it **off**. It challenges automated visitors, and two automated visitors are friendly: iPhones checking for Apple Wallet card updates, and your till if you use the POS integration. With it on, stamps can stop showing up on wallet cards.
 
 **Caching → Configuration**
-1. Leave it as it is. Never add a "Cache Everything" rule for the club address: member pages are personal. (The app also tells Cloudflare never to store them.)
+1. Leave it as it is. Never add a "Cache Everything" rule for the club address: member pages are personal. (The app also tells Cloudflare never to store them.) The app's own files (scripts, styles, pictures) are marked as safe to keep, so Cloudflare serves them from its Hong Kong servers without you doing anything.
+
+**Speed → Optimization** (names vary a little; use the dashboard search box)
+1. **Rocket Loader**: **Off**. It rewrites the page's scripts, which the club site's security rules block, so pages would stay blank.
+2. **Brotli** / compression: leave it on (the default).
+3. **Network → HTTP/3 (with QUIC)**: On. Faster on phones with patchy signal.
+4. **Network → 0-RTT Connection Resumption**: leave it **off**. It saves a few milliseconds but lets a recorded request be replayed.
 
 **DNS → Settings** (optional, recommended)
 1. **DNSSEC**: click **Enable DNSSEC**. If your domain isn't registered at Cloudflare, Cloudflare shows a "DS record" to add at your registrar; add it there, or ask the registrar's support to.
@@ -190,7 +196,7 @@ Server-side (Fastify app):
 - Sessions: HS256 JWT in `HttpOnly; Secure; SameSite=Strict` cookies, 12 h; each carries the account's `session_version`, checked on every request against the database together with role, store and active status, so demotion, disabling, password changes and "sign out everywhere" are immediate. Two-step pending state is a separate 5-minute cookie.
 - Passwords: minimum 10 characters, common-password and email checks, enforced on create, reset and change.
 - CSRF: every cookie-authenticated `POST/PATCH/DELETE` under `/api/` is refused when `Sec-Fetch-Site` is `cross-site`/`same-site` or `Origin` is foreign or `null` (POS API and Apple Wallet web service use their own token auth and are exempt).
-- Headers: CSP (`default-src 'self'`, no inline script, `frame-ancestors 'none'`), HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` (camera self only), COOP, CORP; `Cache-Control: no-store` on all API answers.
+- Headers: CSP (`default-src 'self'`, no inline script, `frame-ancestors 'none'`), HSTS, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` (camera self only), COOP, CORP; `Cache-Control: no-store` on all API answers except `/api/public/config` (shop settings only, `private, max-age=30`); `X-Robots-Tag: noindex` on admin, staff, member and API paths.
 - Client IP: `trustProxy` limited to loopback and private ranges (the Caddy container), so `X-Forwarded-For` can't be forged to dodge rate limits.
 - Rate limits: 600 requests/minute per IP everywhere; tight limits on sign-in, codes and two-step; daily caps on sign-in codes per email (10) and per phone (5).
 - Activity log (`audit_log`): sign-ins, failures, lockouts, password and two-step changes, every successful admin change (method, route, target id and changed field names, never values) and CSV exports, with IP and user agent.

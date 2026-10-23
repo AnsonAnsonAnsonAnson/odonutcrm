@@ -3,9 +3,11 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 
 export const CUSTOMER_COOKIE = 'od_c';
 export const STAFF_COOKIE = 'od_s';
+// Half-way through a two-step sign-in: password checked, authenticator code still to come.
+export const STAFF_PENDING_COOKIE = 'od_s2';
 
 export type StaffRole = 'owner' | 'manager' | 'staff';
-export interface StaffSession { id: string; role: StaffRole; storeId: string | null; name: string }
+export interface StaffSession { id: string; role: StaffRole; storeId: string | null; name: string; version: number }
 export interface CustomerSession { id: string }
 
 const ROLE_RANK: Record<StaffRole, number> = { staff: 1, manager: 2, owner: 3 };
@@ -44,9 +46,21 @@ export class Sessions {
     reply.setCookie(CUSTOMER_COOKIE, token, this.cookieOptions(180 * 24 * 3600));
   }
 
+  // Sessions carry the account's session_version; bumping it in the database signs out every device.
   async setStaff(reply: FastifyReply, s: StaffSession) {
-    const token = await this.sign({ sub: s.id, role: s.role, storeId: s.storeId, name: s.name }, 'staff', '12h');
-    reply.setCookie(STAFF_COOKIE, token, this.cookieOptions(12 * 3600));
+    const token = await this.sign({ sub: s.id, role: s.role, storeId: s.storeId, name: s.name, v: s.version }, 'staff', '12h');
+    reply.setCookie(STAFF_COOKIE, token, { ...this.cookieOptions(12 * 3600), sameSite: 'strict' });
+    reply.clearCookie(STAFF_PENDING_COOKIE, { path: '/' });
+  }
+
+  async setStaffPending(reply: FastifyReply, id: string, version: number) {
+    const token = await this.sign({ sub: id, v: version }, 'staff-two-step', '5m');
+    reply.setCookie(STAFF_PENDING_COOKIE, token, { ...this.cookieOptions(5 * 60), sameSite: 'strict' });
+  }
+
+  async staffPending(req: FastifyRequest): Promise<{ id: string; version: number } | null> {
+    const p = await this.verify<{ sub: string; v: number }>(req.cookies[STAFF_PENDING_COOKIE], 'staff-two-step');
+    return p ? { id: p.sub, version: p.v ?? 0 } : null;
   }
 
   async customer(req: FastifyRequest): Promise<CustomerSession | null> {
@@ -55,11 +69,11 @@ export class Sessions {
   }
 
   async staff(req: FastifyRequest): Promise<StaffSession | null> {
-    const p = await this.verify<{ sub: string; role: StaffRole; storeId: string | null; name: string }>(
+    const p = await this.verify<{ sub: string; role: StaffRole; storeId: string | null; name: string; v?: number }>(
       req.cookies[STAFF_COOKIE],
       'staff',
     );
-    return p ? { id: p.sub, role: p.role, storeId: p.storeId, name: p.name } : null;
+    return p ? { id: p.sub, role: p.role, storeId: p.storeId, name: p.name, version: p.v ?? 0 } : null;
   }
 
   // Short-lived single-purpose link token (desktop -> phone hand-off).

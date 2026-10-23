@@ -1,20 +1,54 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { many, one } from '../db.js';
-import { HttpError, STAFF_COOKIE, hasRole, type StaffRole, type StaffSession } from '../lib/auth.js';
+import { HttpError, STAFF_COOKIE, STAFF_PENDING_COOKIE, hasRole, type StaffRole, type StaffSession } from '../lib/auth.js';
+import { audit } from '../lib/security.js';
+import { LOCK_AFTER, LOGIN_COLS, DUMMY_HASH, assertNotLocked, checkSecondFactor, type LoginRow } from '../services/staffSecurity.js';
 import { verifyPassword } from '../lib/crypto.js';
 import { addStamps, redeemVoucher, type StampResult } from '../services/loyalty.js';
 import { activeMultiplier, getProgram } from '../services/program.js';
 import type { Services } from '../app.js';
 
+declare module 'fastify' {
+  interface FastifyRequest {
+    staffSession?: StaffSession;
+  }
+}
+
+interface StaffRow {
+  active: boolean;
+  role: StaffRole;
+  store_id: string | null;
+  name: string;
+  session_version: number;
+  totp_enabled_at: Date | null;
+}
+
+/**
+ * Checks the staff cookie against the account as it is now, so a disabled account, a changed
+ * role or a "sign out everywhere" takes effect on the very next request, not when the cookie expires.
+ * Admin areas (min manager) also enforce the owner's "require two-step sign-in" setting.
+ */
 export function staffGuard(svc: Services, min: StaffRole) {
   return async (req: FastifyRequest): Promise<StaffSession> => {
     const s = await svc.sessions.staff(req);
     if (!s) throw new HttpError(401, 'Please sign in');
-    const row = await one<{ active: boolean }>(svc.db, 'SELECT active FROM staff_users WHERE id = $1', [s.id]);
+    const row = await one<StaffRow & { require_two_step: boolean }>(
+      svc.db,
+      `SELECT u.active, u.role, u.store_id, u.name, u.session_version, u.totp_enabled_at,
+              (SELECT require_two_step FROM program WHERE id = 1) AS require_two_step
+         FROM staff_users u WHERE u.id = $1`,
+      [s.id],
+    );
     if (!row?.active) throw new HttpError(401, 'Your account is disabled');
-    if (!hasRole(s, min)) throw new HttpError(403, 'You do not have access to this');
-    return s;
+    if (row.session_version !== s.version) throw new HttpError(401, 'You were signed out. Please sign in again.');
+    const session: StaffSession = { id: s.id, role: row.role, storeId: row.store_id, name: row.name, version: row.session_version };
+    if (!hasRole(session, min)) throw new HttpError(403, 'You do not have access to this');
+    if (min !== 'staff' && row.require_two_step && !row.totp_enabled_at) {
+      throw new HttpError(403, 'Turn on two-step sign-in to use the admin area.', 'two_step_required');
+    }
+    req.staffSession = session;
+    return session;
   };
 }
 
@@ -73,23 +107,75 @@ export async function staffRoutes(app: FastifyInstance) {
     '/login',
     { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
     async (req, reply) => {
-      const b = z.object({ email: z.string().trim().toLowerCase().email(), password: z.string().min(1).max(200) }).parse(req.body);
-      const u = await one<{ id: string; name: string; role: StaffRole; store_id: string | null; password_hash: string; active: boolean }>(
-        db,
-        'SELECT * FROM staff_users WHERE email = $1',
-        [b.email],
-      );
-      if (!u || !u.active || !(await verifyPassword(b.password, u.password_hash))) {
+      const b = z.object({ email: z.string().trim().toLowerCase().email().max(200), password: z.string().min(1).max(200) }).parse(req.body);
+      const u = await one<LoginRow>(db, `SELECT ${LOGIN_COLS} FROM staff_users WHERE email = $1`, [b.email]);
+      if (!u) {
+        // Same work as a real check, so response time doesn't reveal which emails have accounts.
+        await verifyPassword(b.password, DUMMY_HASH);
+        await audit(db, req, { actor: b.email, action: 'login.failed', details: { reason: 'unknown email' } });
         throw new HttpError(401, 'Email or password is incorrect');
       }
-      await db.query('UPDATE staff_users SET last_login_at = now() WHERE id = $1', [u.id]);
-      await sessions.setStaff(reply, { id: u.id, role: u.role, storeId: u.store_id, name: u.name });
-      return { id: u.id, name: u.name, role: u.role, storeId: u.store_id };
+      assertNotLocked(u);
+      if (!u.active || !(await verifyPassword(b.password, u.password_hash))) {
+        await loginFailed(req, u, u.active ? 'wrong password' : 'account disabled');
+        throw new HttpError(401, 'Email or password is incorrect');
+      }
+      if (u.totp_enabled_at) {
+        await sessions.setStaffPending(reply, u.id, u.session_version);
+        return { status: 'two_step' };
+      }
+      return loginSucceeded(req, reply, u, 'password');
     },
   );
 
-  app.post('/logout', async (_req, reply) => {
+  // Second step: a 6-digit code from the authenticator app, or one of the printed backup codes.
+  app.post(
+    '/login/two-step',
+    { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } },
+    async (req, reply) => {
+      const { code } = z.object({ code: z.string().trim().min(6).max(20) }).parse(req.body);
+      const pending = await sessions.staffPending(req);
+      if (!pending) throw new HttpError(401, 'That took too long. Please sign in again.', 'expired');
+      const u = await one<LoginRow>(db, `SELECT ${LOGIN_COLS} FROM staff_users WHERE id = $1`, [pending.id]);
+      if (!u || !u.active || !u.totp_enabled_at || u.session_version !== pending.version) {
+        throw new HttpError(401, 'Please sign in again.', 'expired');
+      }
+      assertNotLocked(u);
+      const result = await checkSecondFactor(svc, u, code);
+      if (!result) {
+        await loginFailed(req, u, 'wrong two-step code');
+        throw new HttpError(400, 'That code is not right. Check the newest code in your authenticator app.', 'invalid');
+      }
+      return loginSucceeded(req, reply, u, result);
+    },
+  );
+
+  async function loginFailed(req: FastifyRequest, u: LoginRow, reason: string) {
+    const r = await one<{ failed_logins: number; locked_until: Date | null }>(
+      db,
+      // From the 5th failure in a row the account locks: 15 minutes, doubling each time, up to a day.
+      `UPDATE staff_users SET failed_logins = failed_logins + 1,
+              locked_until = CASE WHEN failed_logins + 1 >= $2
+                THEN now() + make_interval(mins => least(1440, 15 * power(2, failed_logins + 1 - $2)::int)) ELSE locked_until END
+        WHERE id = $1 RETURNING failed_logins, locked_until`,
+      [u.id, LOCK_AFTER],
+    );
+    const locked = (r?.failed_logins ?? 0) >= LOCK_AFTER;
+    await audit(db, req, { staffId: u.id, action: locked ? 'login.locked' : 'login.failed', details: { reason, failures: r?.failed_logins } });
+  }
+
+  async function loginSucceeded(req: FastifyRequest, reply: FastifyReply, u: LoginRow, method: string) {
+    await db.query('UPDATE staff_users SET last_login_at = now(), failed_logins = 0, locked_until = NULL WHERE id = $1', [u.id]);
+    await sessions.setStaff(reply, { id: u.id, role: u.role, storeId: u.store_id, name: u.name, version: u.session_version });
+    await audit(db, req, { staffId: u.id, action: 'login.ok', details: { method } });
+    return { status: 'ok', id: u.id, name: u.name, role: u.role, storeId: u.store_id };
+  }
+
+  app.post('/logout', async (req, reply) => {
+    const s = await sessions.staff(req);
     reply.clearCookie(STAFF_COOKIE, { path: '/' });
+    reply.clearCookie(STAFF_PENDING_COOKIE, { path: '/' });
+    if (s) await audit(db, req, { staffId: s.id, action: 'logout' });
     return { ok: true };
   });
 
@@ -97,7 +183,19 @@ export async function staffRoutes(app: FastifyInstance) {
     const s = await staff(req);
     const store = s.storeId ? await one(db, 'SELECT id, name FROM stores WHERE id = $1', [s.storeId]) : null;
     const program = await one(db, 'SELECT stamps_required, max_stamps_per_scan, brand_name, background_color, foreground_color FROM program WHERE id = 1');
-    return { ...s, store, program, promo: activeMultiplier(await getProgram(db)) };
+    const sec = await one<{ two_step: boolean; required: boolean }>(
+      db,
+      `SELECT u.totp_enabled_at IS NOT NULL AS two_step, p.require_two_step AS required FROM staff_users u, program p WHERE u.id = $1 AND p.id = 1`,
+      [s.id],
+    );
+    const { version: _v, ...me } = s;
+    return {
+      ...me,
+      store,
+      program,
+      promo: activeMultiplier(await getProgram(db)),
+      security: { twoStep: !!sec?.two_step, twoStepRequired: !!sec?.required && s.role !== 'staff' },
+    };
   });
 
   // Resolve whatever the scanner read: a member card QR or a voucher code.

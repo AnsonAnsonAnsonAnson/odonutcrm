@@ -3,6 +3,7 @@ import { HttpError } from '../lib/auth.js';
 import { randomCode, randomToken } from '../lib/crypto.js';
 import { activeMultiplier, getProgram, money, stampsForAmount, type CardRow } from './program.js';
 import { reevaluateTier, type TierChange } from './tiers.js';
+import { recordWelcomeClaim, welcomeAlreadyClaimed } from './identity.js';
 
 export interface IssuedVoucher {
   id: string;
@@ -61,6 +62,7 @@ export interface NewCustomer {
   locale?: string;
   marketingOptIn: boolean;
   referralCode?: string | null;
+  googleSub?: string | null;
 }
 
 export async function createCustomer(tx: Tx, input: NewCustomer) {
@@ -74,8 +76,8 @@ export async function createCustomer(tx: Tx, input: NewCustomer) {
   }
   const customer = await one<{ id: string; referral_code: string }>(
     tx,
-    `INSERT INTO customers (email, first_name, last_name, phone, birthday, gender, locale, marketing_opt_in, referral_code, referred_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, referral_code`,
+    `INSERT INTO customers (email, first_name, last_name, phone, birthday, gender, locale, marketing_opt_in, referral_code, referred_by, google_sub)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, referral_code`,
     [
       input.email.toLowerCase(),
       input.firstName,
@@ -87,10 +89,14 @@ export async function createCustomer(tx: Tx, input: NewCustomer) {
       input.marketingOptIn,
       randomCode(7),
       referredBy,
+      input.googleSub ?? null,
     ],
   );
+  // Welcome gifts are once per person: not again for a mobile number or inbox that already had them.
+  const welcomeClaimed = await welcomeAlreadyClaimed(tx, input.email, input.phone);
+  await recordWelcomeClaim(tx, input.email, input.phone);
   // Welcome stamps start the card off, so a new member is already on their way to the reward.
-  const welcomeStamps = Math.min(program.signup_stamps, program.stamps_required - 1);
+  const welcomeStamps = welcomeClaimed ? 0 : Math.min(program.signup_stamps, program.stamps_required - 1);
   const card = await one<CardRow>(
     tx,
     `INSERT INTO cards (customer_id, serial_number, auth_token, qr_token, stamps, lifetime_stamps) VALUES ($1,$2,$3,$4,$5,$5) RETURNING *`,
@@ -106,11 +112,11 @@ export async function createCustomer(tx: Tx, input: NewCustomer) {
     );
   }
   const vouchers: IssuedVoucher[] = [];
-  if (program.welcome_template_id) {
+  if (program.welcome_template_id && !welcomeClaimed) {
     const v = await issueVoucher(tx, customer!.id, program.welcome_template_id, 'welcome');
     if (v) vouchers.push(v);
   }
-  return { customer: customer!, card: card!, vouchers };
+  return { customer: customer!, card: card!, vouchers, welcomeClaimed };
 }
 
 export interface StampInput {

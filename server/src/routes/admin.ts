@@ -410,6 +410,11 @@ export async function adminRoutes(app: FastifyInstance) {
         signup_stamps: z.number().int().min(0).max(5),
         reward_voucher_count: z.number().int().min(1).max(5),
         reward_summary: z.string().trim().min(1).max(60),
+        google_client_id: z
+          .string()
+          .trim()
+          .regex(/^$|^[\w-]+\.apps\.googleusercontent\.com$/, 'A Google client ID ends in .apps.googleusercontent.com'),
+        verify_phone_at_signup: z.boolean(),
       })
       .partial()
       .parse(req.body);

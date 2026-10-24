@@ -134,6 +134,19 @@ export default function Settings() {
       </div>
 
       <fieldset disabled={!owner} className="panel form">
+        <h3>Member sign-in</h3>
+        <label>
+          Google sign-in client ID (leave empty to hide the Google button)
+          <input value={p.google_client_id ?? ''} placeholder="1234567890-abc123.apps.googleusercontent.com" onChange={set('google_client_id')} />
+        </label>
+        <p className="muted">Create it in Google Cloud → APIs &amp; Services → Credentials → OAuth client ID (type: Web application), with your site address as an authorised JavaScript origin.</p>
+        <label className="check">
+          <input type="checkbox" checked={!!p.verify_phone_at_signup} onChange={set('verify_phone_at_signup')} />
+          New members confirm their mobile number with a text code (needs SMS set up; stops one person making many accounts)
+        </label>
+      </fieldset>
+
+      <fieldset disabled={!owner} className="panel form">
         <h3>Stamp card</h3>
         <div className="row wrap">
           <label>Program name<input value={p.name} onChange={set('name')} /></label>

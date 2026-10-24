@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { one, many, withTx } from '../db.js';
 import { HttpError, CUSTOMER_COOKIE } from '../lib/auth.js';
@@ -8,12 +8,53 @@ import { applyPromoCode, createCustomer, customerHistory, customerVouchers } fro
 import { activeMultiplier, getProgram, howItWorks, money } from '../services/program.js';
 import { memberCenterUrl } from '../services/apple/pass.js';
 import { tierProgress } from '../services/tiers.js';
+import { phoneOwner } from '../services/identity.js';
+import { verifyGoogleIdToken } from '../lib/google.js';
 
 const SIGNUP_COOKIE = 'od_su';
 const email = z.string().trim().toLowerCase().email().max(200);
 
 export async function customerRoutes(app: FastifyInstance) {
-  const { db, cfg, sessions, mailer, sms, notifier, log } = app.svc;
+  const { db, cfg, sessions, mailer, sms, notifier, log, googleKeys } = app.svc;
+
+  interface PendingSignup {
+    email: string;
+    googleSub?: string;
+    firstName?: string;
+    lastName?: string;
+  }
+  async function startSignup(reply: FastifyReply, pending: PendingSignup) {
+    const token = await sessions.sign({ ...pending }, 'signup', '30m');
+    reply.setCookie(SIGNUP_COOKIE, token, sessions.cookieOptions(30 * 60));
+    return { status: 'signup' as const, email: pending.email, firstName: pending.firstName ?? '', lastName: pending.lastName ?? '' };
+  }
+
+  /** New members confirm their mobile number by text when SMS is set up and the owner wants it. */
+  const phoneCheckRequired = async () => sms.enabled && (await getProgram(db)).verify_phone_at_signup;
+
+  const phoneTaken = () =>
+    new HttpError(409, 'This mobile number already belongs to a member. Please sign in to that account instead.', 'phone_taken');
+
+  /** Checks a 6-digit code sent to `identity`. Each code allows 5 tries and works once. */
+  async function checkCode(identity: string, code: string) {
+    const otp = await one<{ id: string; code_hash: string; attempts: number }>(
+      db,
+      `SELECT id, code_hash, attempts FROM otp_codes
+        WHERE identity = $1 AND consumed_at IS NULL AND expires_at > now()
+        ORDER BY created_at DESC LIMIT 1`,
+      [identity],
+    );
+    if (!otp || otp.attempts >= 5) throw new HttpError(400, 'That code has expired. Please request a new one.', 'expired');
+    // Count the try before checking it, in one step, so many guesses sent at the same moment
+    // still get only 5 chances between them.
+    const counted = await db.query('UPDATE otp_codes SET attempts = attempts + 1 WHERE id = $1 AND attempts < 5 AND consumed_at IS NULL', [otp.id]);
+    if (!counted.rowCount) throw new HttpError(400, 'That code has expired. Please request a new one.', 'expired');
+    if (!safeEqual(otp.code_hash, hmac(cfg.secret, `${identity}:${code}`))) {
+      throw new HttpError(400, 'That code is not right. Please try again.', 'invalid');
+    }
+    const used = await db.query('UPDATE otp_codes SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL', [otp.id]);
+    if (!used.rowCount) throw new HttpError(400, 'That code has already been used. Please request a new one.', 'expired');
+  }
 
   async function requireCustomer(req: FastifyRequest): Promise<string> {
     const s = await sessions.customer(req);
@@ -45,6 +86,8 @@ export async function customerRoutes(app: FastifyInstance) {
       terms: p.terms,
       privacyPolicy: p.privacy_policy,
       smsSignIn: sms.enabled,
+      googleClientId: p.google_client_id || null,
+      verifyPhone: sms.enabled && p.verify_phone_at_signup,
       appleWallet: !!cfg.apple,
       googleWallet: !!cfg.google,
       vapidPublicKey: cfg.vapid?.publicKey ?? null,
@@ -131,23 +174,7 @@ export async function customerRoutes(app: FastifyInstance) {
         .refine((b) => !!b.email !== !!b.phone, 'Enter an email or a mobile number')
         .parse(req.body);
       const identity = body.email ?? `sms:${body.phone}`;
-      const otp = await one<{ id: string; code_hash: string; attempts: number }>(
-        db,
-        `SELECT id, code_hash, attempts FROM otp_codes
-          WHERE identity = $1 AND consumed_at IS NULL AND expires_at > now()
-          ORDER BY created_at DESC LIMIT 1`,
-        [identity],
-      );
-      if (!otp || otp.attempts >= 5) throw new HttpError(400, 'That code has expired. Please request a new one.', 'expired');
-      // Count the try before checking it, in one step, so many guesses sent at the same moment
-      // still get only 5 chances between them.
-      const counted = await db.query('UPDATE otp_codes SET attempts = attempts + 1 WHERE id = $1 AND attempts < 5 AND consumed_at IS NULL', [otp.id]);
-      if (!counted.rowCount) throw new HttpError(400, 'That code has expired. Please request a new one.', 'expired');
-      if (!safeEqual(otp.code_hash, hmac(cfg.secret, `${identity}:${body.code}`))) {
-        throw new HttpError(400, 'That code is not right. Please try again.', 'invalid');
-      }
-      const used = await db.query('UPDATE otp_codes SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL', [otp.id]);
-      if (!used.rowCount) throw new HttpError(400, 'That code has already been used. Please request a new one.', 'expired');
+      await checkCode(identity, body.code);
       const customer = body.email
         ? await one<{ id: string }>(db, 'SELECT id FROM customers WHERE email = $1', [body.email])
         : await one<{ id: string }>(db, 'SELECT id FROM customers WHERE phone = $1 ORDER BY last_visit_at DESC NULLS LAST LIMIT 1', [body.phone]);
@@ -156,20 +183,74 @@ export async function customerRoutes(app: FastifyInstance) {
         return { status: 'ok' };
       }
       if (!body.email) throw new HttpError(404, 'No member uses that number yet. Sign up with your email first.');
-      const token = await sessions.sign({ email: body.email }, 'signup', '30m');
-      reply.setCookie(SIGNUP_COOKIE, token, sessions.cookieOptions(30 * 60));
-      return { status: 'signup', email: body.email };
+      return startSignup(reply, { email: body.email });
+    },
+  );
+
+  // ---- Sign in with Google: the browser gets an ID token from Google, we check it here ----
+  app.post(
+    '/auth/google',
+    { config: { rateLimit: { max: 20, timeWindow: '10 minutes' } } },
+    async (req, reply) => {
+      const { credential } = z.object({ credential: z.string().min(20).max(4096) }).parse(req.body);
+      const p = await getProgram(db);
+      if (!p.google_client_id) throw new HttpError(400, 'Google sign-in is not set up. Please use your email.');
+      const g = await verifyGoogleIdToken(credential, p.google_client_id, googleKeys);
+      // The Google account id first (it survives an email change), then the email address.
+      const customer = await one<{ id: string; google_sub: string | null }>(
+        db,
+        `SELECT id, google_sub FROM customers WHERE google_sub = $1 OR email = $2
+          ORDER BY (google_sub IS NOT DISTINCT FROM $1) DESC LIMIT 1`,
+        [g.sub, g.email],
+      );
+      if (customer) {
+        if (!customer.google_sub) await db.query('UPDATE customers SET google_sub = $2 WHERE id = $1 AND google_sub IS NULL', [customer.id, g.sub]);
+        await sessions.setCustomer(reply, customer.id);
+        return { status: 'ok' };
+      }
+      return startSignup(reply, { email: g.email, googleSub: g.sub, firstName: g.firstName, lastName: g.lastName });
+    },
+  );
+
+  // A text code to the new member's mobile, so each number can only make one account.
+  app.post(
+    '/auth/signup/phone-code',
+    { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } },
+    async (req) => {
+      const pending = await sessions.verify<PendingSignup>(req.cookies[SIGNUP_COOKIE], 'signup');
+      if (!pending) throw new HttpError(401, 'Your sign-up session expired. Please start again.');
+      const body = z.object({ phone, locale: z.enum(['en', 'zh-HK']).optional() }).parse(req.body);
+      if (!(await phoneCheckRequired())) return { ok: true, required: false };
+      if (await phoneOwner(db, body.phone)) throw phoneTaken();
+      const identity = `signup:${body.phone}`;
+      const sent = await one<{ today: number; recent: number }>(
+        db,
+        `SELECT count(*)::int AS today, count(*) FILTER (WHERE created_at > now() - interval '45 seconds')::int AS recent
+           FROM otp_codes WHERE identity = $1 AND created_at > now() - interval '1 day'`,
+        [identity],
+      );
+      if (sent!.recent) throw new HttpError(429, 'Please wait a moment before requesting another code');
+      if (sent!.today >= 5) throw new HttpError(429, 'Too many codes for this number today. Please try again tomorrow.');
+      const code = otpCode();
+      await db.query(
+        `INSERT INTO otp_codes (identity, channel, code_hash, expires_at) VALUES ($1, 'sms', $2, now() + interval '10 minutes')`,
+        [identity, hmac(cfg.secret, `${identity}:${code}`)],
+      );
+      const p = await getProgram(db);
+      await sms.send(body.phone, body.locale === 'zh-HK' ? `${p.brand_name} 驗證碼：${code}（10 分鐘內有效）` : `${p.brand_name} code: ${code} (valid 10 minutes)`);
+      return { ok: true, required: true };
     },
   );
 
   app.post('/auth/signup', async (req, reply) => {
-    const pending = await sessions.verify<{ email: string }>(req.cookies[SIGNUP_COOKIE], 'signup');
+    const pending = await sessions.verify<PendingSignup>(req.cookies[SIGNUP_COOKIE], 'signup');
     if (!pending) throw new HttpError(401, 'Your sign-up session expired. Please enter your email again.');
     const body = z
       .object({
         firstName: z.string().trim().min(1).max(60),
         lastName: z.string().trim().min(1).max(60),
         phone: z.string().trim().regex(/^\+?[0-9 ]{6,20}$/, 'Enter a valid mobile number'),
+        phoneCode: z.string().trim().regex(/^\d{6}$/).optional(),
         birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => !isNaN(Date.parse(d)) && Date.parse(d) < Date.now(), 'Enter a valid date'),
         gender: z.enum(['male', 'female', 'other', 'undisclosed']),
         marketingOptIn: z.boolean().default(false),
@@ -178,22 +259,37 @@ export async function customerRoutes(app: FastifyInstance) {
         locale: z.enum(['en', 'zh-HK']).default('en'),
       })
       .parse(req.body);
+    const mobile = body.phone.replace(/\s/g, '');
+
+    const already = await one<{ id: string }>(db, 'SELECT id FROM customers WHERE email = $1', [pending.email]);
+    if (!already) {
+      if (await phoneOwner(db, mobile)) throw phoneTaken();
+      if (await phoneCheckRequired()) {
+        if (!body.phoneCode) throw new HttpError(400, 'Enter the code we texted to your mobile.', 'phone_code_required');
+        await checkCode(`signup:${mobile}`, body.phoneCode);
+      }
+    }
 
     const result = await withTx(db, async (tx) => {
       const existing = await one<{ id: string }>(tx, 'SELECT id FROM customers WHERE email = $1', [pending.email]);
-      if (existing) return { id: existing.id, vouchers: [] };
+      if (existing) return { id: existing.id, vouchers: [], welcomeClaimed: false };
       const r = await createCustomer(tx, {
         email: pending.email,
         firstName: body.firstName,
         lastName: body.lastName,
-        phone: body.phone.replace(/\s/g, ''),
+        phone: mobile,
         birthday: body.birthday,
         gender: body.gender,
         locale: body.locale,
         marketingOptIn: body.marketingOptIn,
         referralCode: body.referralCode,
+        googleSub: pending.googleSub,
       });
-      return { id: r.customer.id, vouchers: r.vouchers, card: r.card, created: true };
+      return { id: r.customer.id, vouchers: r.vouchers, card: r.card, created: true, welcomeClaimed: r.welcomeClaimed };
+    }).catch((err) => {
+      // Two sign-ups racing for the same number: the database's one-per-number rule decides.
+      if (err?.code === '23505' && String(err.constraint).includes('phone')) throw phoneTaken();
+      throw err;
     });
     const program = await getProgram(db);
     const welcomeStamps = result.card?.stamps ?? 0;
@@ -232,6 +328,8 @@ Show your card at the counter every visit. ${howItWorks(program)}`,
       status: 'ok',
       welcomeVouchers: result.vouchers.map((v) => ({ title: v.title, expiresAt: v.expires_at })),
       welcomeStamps,
+      // This mobile number or email already had a welcome gift on an earlier account.
+      welcomeAlreadyClaimed: result.welcomeClaimed,
     };
   });
 
@@ -289,6 +387,7 @@ Show your card at the counter every visit. ${howItWorks(program)}`,
         locale: z.enum(['en', 'zh-HK']).optional(),
       })
       .parse(req.body);
+    if (b.phone && (await phoneOwner(db, b.phone, id))) throw phoneTaken();
     await db.query(
       `UPDATE customers SET first_name = coalesce($2, first_name), last_name = coalesce($3, last_name),
               phone = coalesce($4, phone), marketing_opt_in = coalesce($5, marketing_opt_in), locale = coalesce($6, locale)

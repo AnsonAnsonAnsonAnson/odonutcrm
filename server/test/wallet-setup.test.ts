@@ -51,6 +51,7 @@ before(async () => {
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(db, () => {});
   await seed(db, { adminEmail: 'owner@example.com', adminPassword: 'correct horse battery', log: () => {} });
+  await db.query('UPDATE program SET verify_phone_at_signup = false');
   cfg = loadConfig({
     APP_SECRET: 'w'.repeat(40),
     PUBLIC_URL: 'https://loyalty.example.com',

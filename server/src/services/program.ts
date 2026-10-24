@@ -39,6 +39,9 @@ export interface Program {
   signup_stamps: number;
   reward_voucher_count: number;
   reward_summary: string;
+  /** Google sign-in OAuth client ID; empty = Google sign-in off. */
+  google_client_id: string;
+  verify_phone_at_signup: boolean;
   updated_at: Date;
 }
 

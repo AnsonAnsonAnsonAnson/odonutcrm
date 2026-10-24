@@ -38,6 +38,8 @@ async function call(method: string, url: string, opts: { cookie?: string; body?:
   });
 }
 
+// Each member needs their own mobile number (one account per number).
+let nextPhone = 91234567;
 async function signUp(email: string, extra: Record<string, unknown> = {}) {
   let r = await call('POST', '/api/auth/otp', { body: { email } });
   assert.equal(r.statusCode, 200, r.body);
@@ -51,7 +53,7 @@ async function signUp(email: string, extra: Record<string, unknown> = {}) {
     body: {
       firstName: 'Test',
       lastName: email.split('@')[0],
-      phone: '+852 9123 4567',
+      phone: `+852 ${nextPhone++}`,
       birthday: '1999-05-20',
       gender: 'undisclosed',
       marketingOptIn: true,
@@ -69,7 +71,7 @@ before(async () => {
   await migrate(db, () => {});
   await seed(db, { adminEmail: 'owner@example.com', adminPassword: 'correct horse battery', log: () => {} });
   // These tests use the classic one-stamp-per-visit rules; rewards.test.ts covers the shop's own rules.
-  await db.query('UPDATE program SET signup_stamps = 0, reward_voucher_count = 1');
+  await db.query('UPDATE program SET signup_stamps = 0, reward_voucher_count = 1, verify_phone_at_signup = false');
   cfg = loadConfig({
     APP_SECRET: 'x'.repeat(40),
     PUBLIC_URL: 'https://loyalty.example.com',

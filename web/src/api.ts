@@ -31,6 +31,11 @@ export interface PublicConfig {
   brandName: string;
   programName: string;
   stampsRequired: number;
+  /** Bill amount per stamp; 0 when staff count stamps by hand. */
+  spendPerStamp: number;
+  signupStamps: number;
+  rewardSummary: string;
+  welcomeGift: string | null;
   backgroundColor: string;
   foregroundColor: string;
   labelColor: string;

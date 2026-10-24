@@ -34,7 +34,32 @@ export interface Program {
   multiplier_starts_at: string | Date | null;
   multiplier_ends_at: string | Date | null;
   multiplier_label: string;
+  /** Bill amount that earns one stamp. 0 = staff count stamps by hand. */
+  spend_per_stamp: number;
+  signup_stamps: number;
+  reward_voucher_count: number;
+  reward_summary: string;
   updated_at: Date;
+}
+
+/** "$40" style amount without needless decimals. */
+export function money(v: string | number) {
+  const n = Number(v);
+  return '$' + (Number.isInteger(n) ? String(n) : n.toFixed(2));
+}
+
+/** Stamps a bill earns, rounded down. Null when stamps are counted by hand. */
+export function stampsForAmount(p: Pick<Program, 'spend_per_stamp'>, amount: number) {
+  const per = Number(p.spend_per_stamp);
+  if (!(per > 0)) return null;
+  // Work in cents so $80.00 / $40 is exactly 2.
+  return Math.floor(Math.round(amount * 100) / Math.round(per * 100));
+}
+
+/** One-line rules for the pass, the join page and emails. */
+export function howItWorks(p: Pick<Program, 'spend_per_stamp' | 'stamps_required' | 'reward_summary'>) {
+  const earn = Number(p.spend_per_stamp) > 0 ? `Collect 1 stamp for every ${money(p.spend_per_stamp)} you spend` : 'Collect a stamp with every purchase';
+  return `${earn}. ${p.stamps_required} stamps = ${p.reward_summary}.`;
 }
 
 export async function getProgram(q: Queryable): Promise<Program> {

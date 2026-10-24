@@ -5,7 +5,7 @@ import { HttpError, CUSTOMER_COOKIE } from '../lib/auth.js';
 import { explainMailError } from '../lib/mailer.js';
 import { hmac, otpCode, safeEqual } from '../lib/crypto.js';
 import { applyPromoCode, createCustomer, customerHistory, customerVouchers } from '../services/loyalty.js';
-import { activeMultiplier, getProgram } from '../services/program.js';
+import { activeMultiplier, getProgram, howItWorks, money } from '../services/program.js';
 import { memberCenterUrl } from '../services/apple/pass.js';
 import { tierProgress } from '../services/tiers.js';
 
@@ -28,10 +28,17 @@ export async function customerRoutes(app: FastifyInstance) {
     // lets the page's early "preload" of this address be used instead of fetched twice).
     reply.header('cache-control', 'private, max-age=30');
     const p = await getProgram(db);
+    const gift = p.welcome_template_id
+      ? await one<{ title: string }>(db, 'SELECT title FROM voucher_templates WHERE id = $1 AND active', [p.welcome_template_id])
+      : null;
     return {
       brandName: p.brand_name,
       programName: p.name,
       stampsRequired: p.stamps_required,
+      spendPerStamp: Number(p.spend_per_stamp),
+      signupStamps: p.signup_stamps,
+      rewardSummary: p.reward_summary,
+      welcomeGift: gift?.title ?? null,
       backgroundColor: p.background_color,
       foregroundColor: p.foreground_color,
       labelColor: p.label_color,
@@ -189,6 +196,7 @@ export async function customerRoutes(app: FastifyInstance) {
       return { id: r.customer.id, vouchers: r.vouchers, card: r.card, created: true };
     });
     const program = await getProgram(db);
+    const welcomeStamps = result.card?.stamps ?? 0;
     if ('created' in result && program.welcome_email_enabled) {
       const link = memberCenterUrl(cfg.publicUrl, { card: result.card } as any);
       const zh = body.locale === 'zh-HK';
@@ -201,26 +209,30 @@ export async function customerRoutes(app: FastifyInstance) {
           zh
             ? `${body.firstName} 你好，
 
-多謝加入！${gifts ? `你的迎新禮「${gifts}」已存入會員中心。` : ''}
+多謝加入！${gifts ? `你的迎新禮「${gifts}」已存入會員中心。` : ''}${welcomeStamps > 0 ? `我們亦已為你的會員卡蓋上 ${welcomeStamps} 個印花。` : ''}
 
 開啟會員卡並加入手機錢包：
 ${link}
 
-每次光臨出示會員卡即可收集印花，集滿 ${program.stamps_required} 個即可換領獎賞。`
+${Number(program.spend_per_stamp) > 0 ? `每消費 ${money(program.spend_per_stamp)} 可得 1 個印花` : '每次光臨出示會員卡即可收集印花'}，集滿 ${program.stamps_required} 個即可換領獎賞。`
             : `Hi ${body.firstName},
 
-Thanks for joining!${gifts ? ` Your welcome gift (${gifts}) is waiting in your Member Center.` : ''}
+Thanks for joining!${gifts ? ` Your welcome gift (${gifts}) is waiting in your Member Center.` : ''}${welcomeStamps > 0 ? ` We've also put ${welcomeStamps} stamp${welcomeStamps > 1 ? 's' : ''} on your card to get you started.` : ''}
 
 Open your card and add it to your phone's wallet:
 ${link}
 
-Show your card every visit to collect a stamp. Collect ${program.stamps_required} to earn a reward.`,
+Show your card at the counter every visit. ${howItWorks(program)}`,
         )
         .catch((err) => log(`welcome email failed: ${explainMailError(err)}`));
     }
     reply.clearCookie(SIGNUP_COOKIE, { path: '/' });
     await sessions.setCustomer(reply, result.id);
-    return { status: 'ok', welcomeVouchers: result.vouchers.map((v) => ({ title: v.title, expiresAt: v.expires_at })) };
+    return {
+      status: 'ok',
+      welcomeVouchers: result.vouchers.map((v) => ({ title: v.title, expiresAt: v.expires_at })),
+      welcomeStamps,
+    };
   });
 
   app.post('/auth/logout', async (_req, reply) => {

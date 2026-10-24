@@ -68,6 +68,8 @@ before(async () => {
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(db, () => {});
   await seed(db, { adminEmail: 'owner@example.com', adminPassword: 'correct horse battery', log: () => {} });
+  // These tests use the classic one-stamp-per-visit rules; rewards.test.ts covers the shop's own rules.
+  await db.query('UPDATE program SET signup_stamps = 0, reward_voucher_count = 1');
   cfg = loadConfig({
     APP_SECRET: 'x'.repeat(40),
     PUBLIC_URL: 'https://loyalty.example.com',
@@ -113,7 +115,7 @@ test('customer signs up with an email code and gets a card plus welcome voucher'
   aliceSerial = me.serial_number;
   aliceAuth = (await db.query('SELECT auth_token FROM cards WHERE serial_number = $1', [aliceSerial])).rows[0].auth_token;
   const vouchers = (await call('GET', '/api/me/vouchers', { cookie: alice })).json();
-  assert.equal(vouchers[0].title, 'Free Topping');
+  assert.equal(vouchers[0].title, 'Free Cream Cheese Donut');
 });
 
 test('wrong codes are rejected and returning members sign straight in', async () => {

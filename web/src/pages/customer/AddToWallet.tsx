@@ -33,7 +33,8 @@ export default function AddToWallet() {
   const nav = useNavigate();
   const loc = useLocation();
   const welcome = (loc.state as any)?.welcome as { title: string }[] | undefined;
-  const [showReward, setShowReward] = useState(!!welcome?.length);
+  const welcomeStamps = ((loc.state as any)?.welcomeStamps as number | undefined) ?? 0;
+  const [showReward, setShowReward] = useState(!!welcome?.length || welcomeStamps > 0);
   const [handoff, setHandoff] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,7 +70,8 @@ export default function AddToWallet() {
         <div className="reward-pop">
           <div className="gift">🎁</div>
           <h2>{t('claimedReward')}</h2>
-          <p><b>{welcome?.map((w) => w.title).join(', ')}</b></p>
+          {!!welcome?.length && <p><b>{welcome.map((w) => w.title).join(', ')}</b></p>}
+          {welcomeStamps > 0 && <p>⭐ {t('welcomeStamps').replace('{n}', String(welcomeStamps))}</p>}
           <p className="muted">{t('claimedRewardBody')}</p>
           <button className="btn primary" onClick={() => setShowReward(false)}>{t('confirm')}</button>
         </div>

@@ -5,6 +5,7 @@ import { useConfig } from '../../config';
 import { LangButton, useI18n } from '../../i18n';
 import { ErrorText, Modal, Qr, Spinner, StampGrid } from '../../components/ui';
 import { WalletButtons } from './AddToWallet';
+import { Rules } from '../../components/Rules';
 
 interface Me {
   first_name: string;
@@ -262,6 +263,7 @@ export default function Member() {
 
       <Modal open={modal === 'benefits'} onClose={() => setModal(null)} title={t('benefits')}>
         <h3>{t('howItWorks')}</h3>
+        <Rules />
         <p>{t('howBody')}</p>
         <h3>{t('perks')}</h3>
         <ul className="perks">

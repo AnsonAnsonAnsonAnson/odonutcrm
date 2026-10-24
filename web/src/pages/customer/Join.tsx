@@ -4,6 +4,7 @@ import { api, ApiError } from '../../api';
 import { useConfig } from '../../config';
 import { LangButton, useI18n } from '../../i18n';
 import { ErrorText, Spinner } from '../../components/ui';
+import { Rules } from '../../components/Rules';
 
 type Step = 'email' | 'code' | 'signup';
 
@@ -111,7 +112,7 @@ export default function Join() {
     e.preventDefault();
     const pad = (s: string) => s.padStart(2, '0');
     run(async () => {
-      const r = await api<{ welcomeVouchers: { title: string }[] }>('/api/auth/signup', {
+      const r = await api<{ welcomeVouchers: { title: string }[]; welcomeStamps: number }>('/api/auth/signup', {
         body: {
           firstName: form.firstName,
           lastName: form.lastName,
@@ -128,7 +129,7 @@ export default function Join() {
         sessionStorage.removeItem('ref');
       } catch {}
       const gifts = await claimPromo();
-      nav('/me/wallet', { replace: true, state: { welcome: [...r.welcomeVouchers, ...gifts] } });
+      nav('/me/wallet', { replace: true, state: { welcome: [...r.welcomeVouchers, ...gifts], welcomeStamps: r.welcomeStamps } });
     });
   };
 
@@ -202,6 +203,7 @@ export default function Join() {
         <p>{t('tagline')}</p>
       </div>
       <div className="sheet">
+        <Rules joining />
         <h2 className="divider-title">{t('signInRegister')}</h2>
         {cfg.stampPromo && <p className="promo-note">⭐ <b>{cfg.stampPromo.label}</b>: {t('promoMultiplier').replace('{m}', String(cfg.stampPromo.multiplier))}</p>}
         {promo && <p className="promo-note">🎁 {t('promoWaiting').replace('{c}', promo)}</p>}

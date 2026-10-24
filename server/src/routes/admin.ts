@@ -405,6 +405,11 @@ export async function adminRoutes(app: FastifyInstance) {
         multiplier_starts_at: z.string().datetime({ offset: true }).nullable(),
         multiplier_ends_at: z.string().datetime({ offset: true }).nullable(),
         multiplier_label: z.string().trim().min(1).max(40),
+        // A typed-in amount may arrive as text.
+        spend_per_stamp: z.coerce.number().min(0).max(10000),
+        signup_stamps: z.number().int().min(0).max(5),
+        reward_voucher_count: z.number().int().min(1).max(5),
+        reward_summary: z.string().trim().min(1).max(60),
       })
       .partial()
       .parse(req.body);
@@ -414,7 +419,7 @@ export async function adminRoutes(app: FastifyInstance) {
       await db.query(`UPDATE program SET ${sets}, updated_at = now() WHERE id = 1`, keys.map((k) => b[k]));
     }
     // Look changes show on every pass. Touch cards so wallets refresh on their next check.
-    const visual = ['name', 'brand_name', 'stamps_required', 'background_color', 'foreground_color', 'label_color', 'terms'];
+    const visual = ['name', 'brand_name', 'stamps_required', 'background_color', 'foreground_color', 'label_color', 'terms', 'spend_per_stamp', 'reward_summary'];
     if (keys.some((k) => visual.includes(k))) await db.query('UPDATE cards SET updated_at = now()');
     return getProgram(db);
   });

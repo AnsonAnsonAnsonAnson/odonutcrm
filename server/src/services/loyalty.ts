@@ -1,7 +1,7 @@
 import { one, many, withTx, type Db, type Queryable, type Tx } from '../db.js';
 import { HttpError } from '../lib/auth.js';
 import { randomCode, randomToken } from '../lib/crypto.js';
-import { activeMultiplier, getProgram, type CardRow } from './program.js';
+import { activeMultiplier, getProgram, money, stampsForAmount, type CardRow } from './program.js';
 import { reevaluateTier, type TierChange } from './tiers.js';
 
 export interface IssuedVoucher {
@@ -89,11 +89,16 @@ export async function createCustomer(tx: Tx, input: NewCustomer) {
       referredBy,
     ],
   );
+  // Welcome stamps start the card off, so a new member is already on their way to the reward.
+  const welcomeStamps = Math.min(program.signup_stamps, program.stamps_required - 1);
   const card = await one<CardRow>(
     tx,
-    `INSERT INTO cards (customer_id, serial_number, auth_token, qr_token) VALUES ($1,$2,$3,$4) RETURNING *`,
-    [customer!.id, 'OD' + randomCode(12), randomToken(24), 'ODC-' + randomCode(14)],
+    `INSERT INTO cards (customer_id, serial_number, auth_token, qr_token, stamps, lifetime_stamps) VALUES ($1,$2,$3,$4,$5,$5) RETURNING *`,
+    [customer!.id, 'OD' + randomCode(12), randomToken(24), 'ODC-' + randomCode(14), welcomeStamps],
   );
+  if (welcomeStamps > 0) {
+    await tx.query(`INSERT INTO stamp_events (card_id, delta, reason, note) VALUES ($1,$2,'bonus','Welcome stamp')`, [card!.id, welcomeStamps]);
+  }
   if (program.tiers_enabled) {
     await tx.query(
       `UPDATE customers SET tier_id = (SELECT id FROM tiers WHERE min_stamps = 0), tier_since = now() WHERE id = $1`,
@@ -111,7 +116,10 @@ export async function createCustomer(tx: Tx, input: NewCustomer) {
 export interface StampInput {
   qrToken?: string;
   cardId?: string;
-  count: number;
+  /** Stamps to add. Leave out and pass `amount` to work them out from the bill. */
+  count?: number;
+  /** Bill amount in dollars. Recorded for the CRM; also sets the stamps when `count` is left out. */
+  amount?: number;
   reason: 'purchase' | 'bonus' | 'adjustment';
   staffId: string | null;
   storeId: string | null;
@@ -132,14 +140,37 @@ export interface StampResult {
   tier: TierChange | null;
   /** Extra stamps added by a running multiplier promotion (e.g. double stamps). */
   bonus: number;
+  /** Stamps added before any bonus (worked out from the bill when only an amount was given). */
+  added: number;
 }
 
 export async function addStamps(db: Db, input: StampInput): Promise<StampResult> {
-  if (!Number.isInteger(input.count) || input.count === 0) throw new HttpError(400, 'Stamp count must be a non-zero whole number');
-  if (input.count < 0 && input.reason !== 'adjustment') throw new HttpError(400, 'Only adjustments can remove stamps');
+  if (input.amount !== undefined && (!Number.isFinite(input.amount) || input.amount < 0 || input.reason !== 'purchase')) {
+    throw new HttpError(400, 'A bill amount must be a positive number on a purchase');
+  }
+  if (input.count === undefined && input.amount === undefined) throw new HttpError(400, 'Give a stamp count or a bill amount');
 
   return withTx(db, async (tx) => {
     const program = await getProgram(tx);
+    let count = input.count;
+    if (count === undefined) {
+      const earned = stampsForAmount(program, input.amount!);
+      if (earned === null) throw new HttpError(400, 'Stamps are counted by hand in this shop. Enter the number of stamps.');
+      if (earned < 1) {
+        throw new HttpError(400, `A ${money(input.amount!)} bill doesn't earn a stamp yet. Every ${money(program.spend_per_stamp)} earns one.`, 'below_minimum');
+      }
+      if (earned > program.max_stamps_per_scan && !input.bypassLimits) {
+        throw new HttpError(
+          400,
+          `That bill earns ${earned} stamps, but the limit is ${program.max_stamps_per_scan} per visit. The owner can raise it in Settings.`,
+          'over_limit',
+        );
+      }
+      count = earned;
+    }
+    if (!Number.isInteger(count) || count === 0) throw new HttpError(400, 'Stamp count must be a non-zero whole number');
+    if (count < 0 && input.reason !== 'adjustment') throw new HttpError(400, 'Only adjustments can remove stamps');
+
     const card = input.cardId
       ? await one<CardRow>(tx, 'SELECT * FROM cards WHERE id = $1 FOR UPDATE', [input.cardId])
       : input.customerId
@@ -150,12 +181,12 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
     if (input.idempotencyKey) {
       const prior = await one(tx, 'SELECT 1 FROM stamp_events WHERE idempotency_key = $1', [input.idempotencyKey]);
       if (prior) {
-        return { duplicate: true, customerId: card.customer_id, card, stampsRequired: program.stamps_required, rewards: [], referrer: null, tier: null, bonus: 0 };
+        return { duplicate: true, customerId: card.customer_id, card, stampsRequired: program.stamps_required, rewards: [], referrer: null, tier: null, bonus: 0, added: 0 };
       }
     }
 
     if (!input.bypassLimits) {
-      if (input.count > program.max_stamps_per_scan) {
+      if (count > program.max_stamps_per_scan) {
         throw new HttpError(400, `At most ${program.max_stamps_per_scan} stamps per scan`);
       }
       if (input.reason === 'purchase' && program.stamp_cooldown_seconds > 0) {
@@ -169,11 +200,11 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
       }
     }
 
-    const delta = Math.max(input.count, -card.stamps);
+    const delta = Math.max(count, -card.stamps);
     await tx.query(
-      `INSERT INTO stamp_events (card_id, delta, reason, staff_id, store_id, note, idempotency_key, api_key_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [card.id, delta, input.reason, input.staffId, input.storeId, input.note ?? null, input.idempotencyKey ?? null, input.apiKeyId ?? null],
+      `INSERT INTO stamp_events (card_id, delta, reason, staff_id, store_id, note, idempotency_key, api_key_id, amount)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [card.id, delta, input.reason, input.staffId, input.storeId, input.note ?? null, input.idempotencyKey ?? null, input.apiKeyId ?? null, input.amount ?? null],
     );
 
     // Launch promotions: purchase stamps are multiplied while the window is open, logged as a separate bonus row.
@@ -196,7 +227,8 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
         `INSERT INTO stamp_events (card_id, delta, reason, staff_id, store_id, note) VALUES ($1,$2,'reward_rollover',$3,$4,'Card completed')`,
         [card.id, -program.stamps_required, input.staffId, input.storeId],
       );
-      if (program.reward_template_id) {
+      // Separate vouchers (e.g. 2 free donuts) so the member can use one now and save one.
+      for (let i = 0; program.reward_template_id && i < program.reward_voucher_count; i++) {
         const v = await issueVoucher(tx, card.customer_id, program.reward_template_id, 'stamp_reward', card.id);
         if (v) rewards.push(v);
       }
@@ -214,9 +246,9 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
     if (input.reason === 'purchase') {
       const cust = await one<{ visit_count: number; referred_by: string | null }>(
         tx,
-        `UPDATE customers SET visit_count = visit_count + 1, last_visit_at = now() WHERE id = $1
+        `UPDATE customers SET visit_count = visit_count + 1, last_visit_at = now(), total_spend = total_spend + $2 WHERE id = $1
          RETURNING visit_count, referred_by`,
-        [card.customer_id],
+        [card.customer_id, input.amount ?? 0],
       );
       // Referrer is rewarded when their friend makes a first real purchase, not at sign-up.
       if (cust && cust.visit_count === 1 && cust.referred_by && program.referral_enabled && program.referral_template_id) {
@@ -227,7 +259,7 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
 
     const tier = program.tiers_enabled ? await reevaluateTier(tx, card.customer_id, program.tier_window_days) : null;
 
-    return { duplicate: false, customerId: card.customer_id, card: updated!, stampsRequired: program.stamps_required, rewards, referrer, tier, bonus };
+    return { duplicate: false, customerId: card.customer_id, card: updated!, stampsRequired: program.stamps_required, rewards, referrer, tier, bonus, added: delta };
   });
 }
 

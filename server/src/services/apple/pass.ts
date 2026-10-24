@@ -1,6 +1,6 @@
 import { PKPass } from 'passkit-generator';
 import type { Config } from '../../config.js';
-import type { PassData, Program } from '../program.js';
+import { howItWorks, type PassData, type Program } from '../program.js';
 import { renderIcon, renderLogo, renderStrip } from './images.js';
 
 export type AppleConfig = NonNullable<Config['apple']>;
@@ -39,7 +39,7 @@ export function passJson(cfg: { publicUrl: string; passTypeId: string; teamId: s
     {
       key: 'how',
       label: 'How it works',
-      value: `Show this card at the counter to collect a stamp with every purchase. Collect ${program.stamps_required} stamps to earn a reward.`,
+      value: `Show this card at the counter. ${howItWorks(program)}`,
     },
     { key: 'terms', label: 'Terms', value: program.terms },
   );

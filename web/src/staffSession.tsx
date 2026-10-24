@@ -10,7 +10,7 @@ export interface StaffMe {
   store: { id: string; name: string } | null;
   promo: { multiplier: number; label: string; endsAt: string | null } | null;
   security: { twoStep: boolean; twoStepRequired: boolean };
-  program: { stamps_required: number; max_stamps_per_scan: number; brand_name: string; background_color: string; foreground_color: string };
+  program: { stamps_required: number; max_stamps_per_scan: number; spend_per_stamp: number; brand_name: string; background_color: string; foreground_color: string };
 }
 
 /** Loads the signed-in staff member or redirects to the staff login. */

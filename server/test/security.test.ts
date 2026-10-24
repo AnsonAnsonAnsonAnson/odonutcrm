@@ -32,6 +32,7 @@ before(async () => {
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(db, () => {});
   await seed(db, { adminEmail: OWNER.email, adminPassword: OWNER.password, log: () => {} });
+  await db.query('UPDATE program SET verify_phone_at_signup = false');
   const cfg = loadConfig({ APP_SECRET: 's'.repeat(40), PUBLIC_URL: 'https://loyalty.example.com', DATABASE_URL: DB_URL, WEB_DIST: '/nonexistent' } as any);
   app = await buildApp(cfg, db, { logger: false, mailer: { send: async (to, _s, text) => void mail.push({ to, text }) } });
   owner = cookieOf(await login(OWNER.email, OWNER.password), 'od_s');

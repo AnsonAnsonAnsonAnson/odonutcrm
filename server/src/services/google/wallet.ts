@@ -1,6 +1,6 @@
 import { createSign } from 'node:crypto';
 import type { Config } from '../../config.js';
-import type { PassData, Program } from '../program.js';
+import { howItWorks, type PassData, type Program } from '../program.js';
 import { memberCenterUrl } from '../apple/pass.js';
 
 export type GoogleConfig = NonNullable<Config['google']>;
@@ -59,7 +59,7 @@ export class GoogleWallet {
       },
       textModulesData: [
         ...(customer.tier ? [{ id: 'tier', header: 'Tier', body: customer.tier }] : []),
-        { id: 'how', header: 'How it works', body: `Collect ${program.stamps_required} stamps to earn a reward.` },
+        { id: 'how', header: 'How it works', body: howItWorks(program) },
       ],
       locations: data.stores.map((s) => ({ latitude: s.latitude, longitude: s.longitude })),
     };

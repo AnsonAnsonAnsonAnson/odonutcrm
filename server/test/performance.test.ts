@@ -20,12 +20,13 @@ const call = (method: string, url: string, o: { cookie?: string; body?: unknown;
   app.inject({ method: method as any, url, payload: o.body as any, remoteAddress: o.ip, headers: o.cookie ? { cookie: o.cookie } : {} });
 const lastCode = (email: string) => mail.filter((m) => m.to === email).at(-1)!.text.match(/\b(\d{6})\b/)![1];
 
+let nextPhone = 60002222;
 async function signUp(email: string, first = 'Pat') {
   await call('POST', '/api/auth/otp', { body: { email } });
   let r = await call('POST', '/api/auth/verify', { body: { email, code: lastCode(email) } });
   r = await call('POST', '/api/auth/signup', {
     cookie: cookieOf(r, 'od_su'),
-    body: { firstName: first, lastName: 'Lee', phone: '+852 6000 2222', birthday: '1991-02-02', gender: 'undisclosed', marketingOptIn: true, acceptTerms: true },
+    body: { firstName: first, lastName: 'Lee', phone: `+852 ${nextPhone++}`, birthday: '1991-02-02', gender: 'undisclosed', marketingOptIn: true, acceptTerms: true },
   });
   assert.equal(r.statusCode, 200, r.body);
   return cookieOf(r, 'od_c');
@@ -36,6 +37,7 @@ before(async () => {
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(db, () => {});
   await seed(db, { adminEmail: 'owner@example.com', adminPassword: 'correct horse battery', log: () => {} });
+  await db.query('UPDATE program SET verify_phone_at_signup = false');
   const cfg = loadConfig({ APP_SECRET: 'p'.repeat(40), PUBLIC_URL: 'https://loyalty.example.com', DATABASE_URL: DB_URL, WEB_DIST: '/nonexistent' } as any);
   app = await buildApp(cfg, db, { logger: false, mailer: { send: async (to, subject, text) => void mail.push({ to, subject, text }) } });
   const r = await call('POST', '/api/staff/login', { body: { email: 'owner@example.com', password: 'correct horse battery' } });
@@ -123,7 +125,7 @@ test('the queries behind busy pages use indexes', async () => {
   // Enough rows that Postgres prefers an index when one fits.
   await db.query(`
     INSERT INTO customers (email, first_name, last_name, phone, referral_code, created_at)
-    SELECT 'bulk' || g || '@example.com', 'Bulk', 'Member' || g, '+8526' || lpad(g::text, 7, '0'), 'B' || g, now() - (g || ' minutes')::interval
+    SELECT 'bulk' || g || '@example.com', 'Bulk', 'Member' || g, '+8525' || lpad(g::text, 7, '0'), 'B' || g, now() - (g || ' minutes')::interval
       FROM generate_series(1, 20000) g`);
   await db.query('ANALYZE customers');
   const plan = async (sql: string, params: unknown[] = []) =>

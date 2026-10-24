@@ -41,28 +41,30 @@ function cached(key: string, render: () => Promise<Buffer>): Promise<Buffer> {
   return hit;
 }
 
+// Same look as the member site: a donut with a real hole so the card colour shows through, and a
+// faint dashed ring for stamps still to collect (visible on dark and light card colours).
 function donutSvg(size: number, filled: boolean, icing: string): string {
   const c = size / 2;
-  const dough = filled ? '#E3A869' : '#D4D4D4';
-  const ice = filled ? icing : '#BDBDBD';
-  const sprinkleColors = filled ? ['#FFFFFF', '#FFD23F', '#3BCEAC', '#5B3A29'] : ['#E8E8E8'];
+  const ring = (R: number, r: number) =>
+    `M${c} ${c - R}a${R} ${R} 0 1 1 0 ${2 * R}a${R} ${R} 0 1 1 0 ${-2 * R}zM${c} ${c - r}a${r} ${r} 0 1 0 0 ${2 * r}a${r} ${r} 0 1 0 0 ${-2 * r}z`;
+  if (!filled) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <path d="${ring(size * 0.45, size * 0.14)}" fill="none" stroke="#9CA3AF" stroke-opacity="0.6" stroke-width="${size * 0.025}" stroke-dasharray="${size * 0.05} ${size * 0.05}"/>
+  </svg>`;
+  }
   const sprinkles = [
-    [-0.24, -0.18, 20], [0.2, -0.25, -30], [0.27, 0.1, 60], [-0.05, 0.3, 10],
-    [-0.3, 0.12, -50], [0.05, -0.33, 80], [0.18, 0.26, -15],
+    [-0.18, -0.22, 25], [0.15, -0.25, -35], [0.25, 0.08, 65], [-0.03, 0.25, 10], [-0.26, 0.07, -55],
   ]
-    .map(([dx, dy, rot], i) => {
+    .map(([dx, dy, rot]) => {
       const x = c + dx * size;
       const y = c + dy * size;
-      const col = sprinkleColors[i % sprinkleColors.length];
-      return `<rect x="${x - size * 0.04}" y="${y - size * 0.012}" width="${size * 0.08}" height="${size * 0.024}" rx="${size * 0.012}" fill="${col}" transform="rotate(${rot} ${x} ${y})"/>`;
+      return `<rect x="${x - size * 0.045}" y="${y - size * 0.015}" width="${size * 0.09}" height="${size * 0.03}" rx="${size * 0.015}" fill="#FFFFFF" opacity="0.9" transform="rotate(${rot} ${x} ${y})"/>`;
     })
     .join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-    <circle cx="${c}" cy="${c}" r="${size * 0.48}" fill="#FFFFFF"/>
-    <circle cx="${c}" cy="${c}" r="${size * 0.4}" fill="${dough}"/>
-    <path d="M ${c} ${c - size * 0.36} a ${size * 0.36} ${size * 0.36} 0 1 1 -0.01 0 z" fill="${ice}"/>
+    <path d="${ring(size * 0.46, size * 0.14)}" fill="#E8B46C" fill-rule="evenodd"/>
+    <path d="${ring(size * 0.39, size * 0.17)}" fill="${icing}" fill-rule="evenodd"/>
     ${sprinkles}
-    <circle cx="${c}" cy="${c}" r="${size * 0.12}" fill="#FFFFFF"/>
   </svg>`;
 }
 

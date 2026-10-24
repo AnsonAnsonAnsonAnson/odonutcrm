@@ -58,12 +58,13 @@ export default function AdminLayout() {
     <StaffCtx.Provider value={me}>
       <div className="admin">
         <aside className="admin-nav no-print">
-          <div className="admin-brand"><img src="/icon.svg" alt="" width={32} height={32} /> {me.program.brand_name}</div>
+          <div className="admin-brand"><img src="/icon.svg" alt="" width={32} height={32} /><span>{me.program.brand_name}<small>Club admin</small></span></div>
           {!mustSetUp && (
             <nav>
               <p className="nav-group">Overview</p>
               <Item to="/admin" icon="dashboard" end>Dashboard</Item>
               <Item to="/admin/members" icon="members">Members</Item>
+              <Item to="/admin/groups" icon="layers">Groups</Item>
               <p className="nav-group">Marketing</p>
               <Item to="/admin/campaigns" icon="campaigns">Campaigns</Item>
               <Item to="/admin/rewards" icon="rewards">Rewards & promos</Item>

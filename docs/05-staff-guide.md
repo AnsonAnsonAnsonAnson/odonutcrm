@@ -14,7 +14,7 @@ A one-page version prints from **Admin → Print kit → Staff cheat sheet**. Th
 |---|---|
 | 1 | "Are you an O! Donut Club member?" |
 | 2 | **Yes:** they show the card in Apple Wallet, Google Wallet or the browser. Scan the QR. No phone? Search their mobile number. |
-| 3 | Check the name on screen, set the number of qualifying items with − / +, tap **Add stamps**. |
+| 3 | Check the name on screen, type the **bill total** (for example 85) and tap **Add stamps**. The screen works out the stamps: one for every $40, rounded down, so $85 gives 2. To add stamps without a bill, tap **Number of stamps** and use − / +. |
 | 4 | Read out the result: "That's 7 of 10, three more for a free donut." If a card completes, the screen says **Card complete** and the free donut voucher is already in their account. |
 | — | **No:** "Scan the poster, it takes 30 seconds and you get a free topping today." Stamp this purchase once they have joined (scan their new card). |
 
@@ -29,9 +29,11 @@ The screen shows the member's tier (Sprinkle, Glazed, Golden). If it says **Now 
 
 ## Rules
 
-- **One stamp per qualifying item** (or per order; the owner decides and it is printed on the cheat sheet). At most 5 per scan.
+- **One stamp for every $40 on one bill**, rounded down. At most 5 per scan; a bigger bill needs a manager. (If the owner turns the $40 rule off in Settings, you count stamps with − / + instead.)
+- **New members** already have their first stamp and a **Free Cream Cheese Donut** voucher when they reach the counter.
+- **A full card (10 stamps)** gives one **2 Free Donuts** voucher. Hand over both donuts together; the voucher works once.
 - **Never stamp without a purchase.** Every stamp records your name, the shop and the time.
-- During a **bonus stamps** promotion the counter screen shows a yellow strip. Add the real number of items; the bonus is added automatically.
+- During a **bonus stamps** promotion the counter screen shows a yellow strip. Type the real bill total; the bonus is added automatically.
 - **Mistakes:** tell a manager. Managers fix them in **Admin → Members → (member) → Adjust stamps** with a reason.
 - If the same card was just stamped, the screen asks you to wait a moment. This stops accidental double taps.
 
@@ -49,6 +51,7 @@ The screen shows the member's tier (Sprinkle, Glazed, Golden). If it says **Now 
 
 ## Managers
 
-- **Members:** search, view history, add notes and tags, adjust stamps, gift a voucher, send a message.
-- **Dashboard:** check weekly. Watch the wallet add rate (aim for 50%+) and the redemption rate.
+- **Members:** search, filter by group, sort by money spent. Click a name for the full profile: visits, total spent, average bill, groups, every stamp and voucher, who they referred, notes and tags. From there you can adjust stamps, gift a voucher or send a message.
+- **Groups:** 11 ready-made groups that update themselves (New this week, Joined but never came back, One visit only, Almost there, Reward waiting, Regulars, Top spenders, At risk, Lapsed, Birthday this month, Referrers). Each has View, Download and Message buttons; Message opens Campaigns with the audience and a suggested message filled in. Messages only reach members who agreed to offers.
+- **Dashboard:** check weekly. The key numbers are repeat rate, active members, visits and average bill (compared with the previous 30 days), plus "Groups to act on": the customers a message can still win back.
 - **End of day:** nothing to do. Backups and reminders run by themselves.

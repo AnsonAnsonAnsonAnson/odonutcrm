@@ -182,7 +182,10 @@ export async function staffRoutes(app: FastifyInstance) {
   app.get('/me', async (req) => {
     const s = await staff(req);
     const store = s.storeId ? await one(db, 'SELECT id, name FROM stores WHERE id = $1', [s.storeId]) : null;
-    const program = await one(db, 'SELECT stamps_required, max_stamps_per_scan, brand_name, background_color, foreground_color FROM program WHERE id = 1');
+    const program = await one(
+      db,
+      'SELECT stamps_required, max_stamps_per_scan, spend_per_stamp, brand_name, background_color, foreground_color FROM program WHERE id = 1',
+    );
     const sec = await one<{ two_step: boolean; required: boolean }>(
       db,
       `SELECT u.totp_enabled_at IS NOT NULL AS two_step, p.require_two_step AS required FROM staff_users u, program p WHERE u.id = $1 AND p.id = 1`,
@@ -237,7 +240,9 @@ export async function staffRoutes(app: FastifyInstance) {
       .object({
         qrToken: z.string().max(100).optional(),
         cardId: z.string().uuid().optional(),
-        count: z.number().int().min(1).max(20).default(1),
+        count: z.number().int().min(1).max(20).optional(),
+        // Bill total in dollars: stamps are worked out from it when no count is given.
+        amount: z.number().min(0).max(100000).optional(),
         idempotencyKey: z.string().max(100).optional(),
       })
       .refine((v) => v.qrToken || v.cardId, 'qrToken or cardId is required')
@@ -245,7 +250,8 @@ export async function staffRoutes(app: FastifyInstance) {
     const r = await addStamps(db, {
       qrToken: b.qrToken?.toUpperCase(),
       cardId: b.cardId,
-      count: b.count,
+      count: b.count ?? (b.amount === undefined ? 1 : undefined),
+      amount: b.amount,
       reason: 'purchase',
       staffId: s.id,
       storeId: s.storeId,
@@ -259,6 +265,7 @@ export async function staffRoutes(app: FastifyInstance) {
       rewards: r.rewards.map((v) => ({ title: v.title, code: v.code })),
       tierUpgrade: r.tier?.upgraded && r.tier.to ? r.tier.to.name : null,
       bonus: r.bonus,
+      added: r.duplicate ? 0 : r.added,
     };
   });
 

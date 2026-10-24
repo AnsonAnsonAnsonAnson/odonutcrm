@@ -1,21 +1,27 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
+// A ring with a real hole (even-odd fill), so the card colour shows through the middle.
+const ring = (R: number, r: number) =>
+  `M50 ${50 - R}a${R} ${R} 0 1 1 0 ${2 * R}a${R} ${R} 0 1 1 0 ${-2 * R}zM50 ${50 - r}a${r} ${r} 0 1 0 0 ${2 * r}a${r} ${r} 0 1 0 0 ${-2 * r}z`;
+
 export function Donut({ filled, size = 48 }: { filled: boolean; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden className={filled ? 'donut on' : 'donut'}>
-      <circle cx="50" cy="50" r="48" fill="#fff" />
-      <circle cx="50" cy="50" r="40" fill={filled ? '#E3A869' : '#D9D9D9'} />
-      <circle cx="50" cy="50" r="36" fill={filled ? '#F25C8A' : '#C4C4C4'} />
-      {filled && (
-        <g>
-          <rect x="26" y="30" width="9" height="3" rx="1.5" fill="#fff" transform="rotate(20 30 31)" />
-          <rect x="62" y="26" width="9" height="3" rx="1.5" fill="#FFD23F" transform="rotate(-30 66 27)" />
-          <rect x="70" y="56" width="9" height="3" rx="1.5" fill="#3BCEAC" transform="rotate(60 74 57)" />
-          <rect x="40" y="72" width="9" height="3" rx="1.5" fill="#fff" transform="rotate(10 44 73)" />
-          <rect x="22" y="58" width="9" height="3" rx="1.5" fill="#FFD23F" transform="rotate(-50 26 59)" />
-        </g>
+      {filled ? (
+        <>
+          <path d={ring(46, 14)} fill="#E8B46C" fillRule="evenodd" />
+          <path d={ring(39, 17)} fill="#F2709E" fillRule="evenodd" />
+          <g fill="#fff" opacity="0.9">
+            <rect x="30" y="27" width="9" height="3" rx="1.5" transform="rotate(25 34 28)" />
+            <rect x="60" y="24" width="9" height="3" rx="1.5" transform="rotate(-35 64 25)" />
+            <rect x="70" y="56" width="9" height="3" rx="1.5" transform="rotate(65 74 57)" />
+            <rect x="42" y="73" width="9" height="3" rx="1.5" transform="rotate(10 46 74)" />
+            <rect x="21" y="56" width="9" height="3" rx="1.5" transform="rotate(-55 25 57)" />
+          </g>
+        </>
+      ) : (
+        <path className="ring" d={ring(45, 14)} fill="none" stroke="currentColor" strokeOpacity="0.28" strokeWidth="2.5" strokeDasharray="5 5" />
       )}
-      <circle cx="50" cy="50" r="12" fill="#fff" />
     </svg>
   );
 }

@@ -4,6 +4,7 @@ import { api, platform } from '../../api';
 import { useConfig } from '../../config';
 import { LangButton, useI18n } from '../../i18n';
 import { Modal, Qr } from '../../components/ui';
+import { Icon } from '../../components/icons';
 
 export function WalletButtons({ compact = false }: { compact?: boolean }) {
   const cfg = useConfig();
@@ -34,7 +35,8 @@ export default function AddToWallet() {
   const loc = useLocation();
   const welcome = (loc.state as any)?.welcome as { title: string }[] | undefined;
   const welcomeStamps = ((loc.state as any)?.welcomeStamps as number | undefined) ?? 0;
-  const [showReward, setShowReward] = useState(!!welcome?.length || welcomeStamps > 0);
+  const welcomeClaimed = !!(loc.state as any)?.welcomeClaimed;
+  const [showReward, setShowReward] = useState(!!welcome?.length || welcomeStamps > 0 || welcomeClaimed);
   const [handoff, setHandoff] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,10 +70,11 @@ export default function AddToWallet() {
       </div>
       <Modal open={showReward} onClose={() => setShowReward(false)}>
         <div className="reward-pop">
-          <div className="gift">🎁</div>
-          <h2>{t('claimedReward')}</h2>
+          <div className="gift"><Icon name="gift" size={30} /></div>
+          {(!!welcome?.length || welcomeStamps > 0) && <h2>{t('claimedReward')}</h2>}
           {!!welcome?.length && <p><b>{welcome.map((w) => w.title).join(', ')}</b></p>}
-          {welcomeStamps > 0 && <p>⭐ {t('welcomeStamps').replace('{n}', String(welcomeStamps))}</p>}
+          {welcomeStamps > 0 && <p>{t('welcomeStamps').replace('{n}', String(welcomeStamps))}</p>}
+          {welcomeClaimed && <p className="muted">{t('welcomeClaimedNote')}</p>}
           <p className="muted">{t('claimedRewardBody')}</p>
           <button className="btn primary" onClick={() => setShowReward(false)}>{t('confirm')}</button>
         </div>

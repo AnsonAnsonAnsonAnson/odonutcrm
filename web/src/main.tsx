@@ -5,6 +5,7 @@ import { ConfigProvider } from './config';
 import { I18nProvider } from './i18n';
 import { Spinner } from './components/ui';
 import Join from './pages/customer/Join';
+import '@fontsource-variable/inter';
 import './styles.css';
 
 // Only the sign-up page is in the first download; everything else loads when it is opened, so the

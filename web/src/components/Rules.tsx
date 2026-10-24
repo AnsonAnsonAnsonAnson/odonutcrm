@@ -1,5 +1,6 @@
 import { useConfig } from '../config';
 import { useI18n } from '../i18n';
+import { Icon } from './icons';
 
 const money = (n: number) => '$' + (Number.isInteger(n) ? String(n) : n.toFixed(2));
 
@@ -7,12 +8,18 @@ const money = (n: number) => '$' + (Number.isInteger(n) ? String(n) : n.toFixed(
 export function Rules({ joining = false }: { joining?: boolean }) {
   const cfg = useConfig();
   const { t } = useI18n();
+  const item = (icon: string, text: string) => (
+    <li>
+      <span className="rule-icon"><Icon name={icon} size={17} /></span>
+      {text}
+    </li>
+  );
   return (
     <ul className="rules">
-      {joining && cfg.welcomeGift && <li>🎁 {t('joinGift').replace('{gift}', cfg.welcomeGift)}</li>}
-      {joining && cfg.signupStamps > 0 && <li>⭐ {t('firstStamp')}</li>}
-      <li>🧾 {cfg.spendPerStamp > 0 ? t('earnRule').replace('{amount}', money(cfg.spendPerStamp)) : t('earnRuleVisit')}</li>
-      <li>🍩 {t('rewardRule').replace('{n}', String(cfg.stampsRequired)).replace('{reward}', cfg.rewardSummary)}</li>
+      {joining && cfg.welcomeGift && item('gift', t('joinGift').replace('{gift}', cfg.welcomeGift))}
+      {joining && cfg.signupStamps > 0 && item('star', t('firstStamp'))}
+      {item('receipt', cfg.spendPerStamp > 0 ? t('earnRule').replace('{amount}', money(cfg.spendPerStamp)) : t('earnRuleVisit'))}
+      {item('donut', t('rewardRule').replace('{n}', String(cfg.stampsRequired)).replace('{reward}', cfg.rewardSummary))}
     </ul>
   );
 }

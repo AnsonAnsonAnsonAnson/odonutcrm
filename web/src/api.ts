@@ -36,6 +36,10 @@ export interface PublicConfig {
   signupStamps: number;
   rewardSummary: string;
   welcomeGift: string | null;
+  /** Google sign-in OAuth client ID; null hides the Google button. */
+  googleClientId: string | null;
+  /** New members confirm their mobile number with a text code. */
+  verifyPhone: boolean;
   backgroundColor: string;
   foregroundColor: string;
   labelColor: string;

@@ -114,13 +114,13 @@ export function passJson(cfg: { publicUrl: string; passTypeId: string; teamId: s
 
 export async function passImages(program: Program, stamps: number): Promise<Record<string, Buffer>> {
   const strip = (scale: 1 | 2 | 3) =>
-    renderStrip({ stamps, required: program.stamps_required, background: program.background_color, icing: '#F25C8A', scale });
+    renderStrip({ stamps, required: program.stamps_required, background: program.background_color, icing: '#F2709E', scale });
   const [s1, s2, s3, l1, l2, l3, i1, i2, i3] = await Promise.all([
     strip(1), strip(2), strip(3),
     renderLogo(1, program.brand_name, program.foreground_color),
     renderLogo(2, program.brand_name, program.foreground_color),
     renderLogo(3, program.brand_name, program.foreground_color),
-    renderIcon(29, '#F25C8A'), renderIcon(58, '#F25C8A'), renderIcon(87, '#F25C8A'),
+    renderIcon(29, '#F2709E'), renderIcon(58, '#F2709E'), renderIcon(87, '#F2709E'),
   ]);
   return {
     'strip.png': s1, 'strip@2x.png': s2, 'strip@3x.png': s3,

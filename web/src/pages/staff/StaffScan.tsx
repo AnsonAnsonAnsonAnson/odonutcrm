@@ -82,9 +82,9 @@ export default function StaffScan() {
       });
       const n = r.added + r.bonus;
       let msg = r.rewards.length
-        ? `🎉 Card complete! ${r.rewards.length > 1 ? `${r.rewards.length} × ` : ''}${r.rewards[0].title} issued. Now ${r.stamps}/${r.stampsRequired}.`
+        ? `Card complete! ${r.rewards.length > 1 ? `${r.rewards.length} × ` : ''}${r.rewards[0].title} issued. Now ${r.stamps}/${r.stampsRequired}.`
         : `✓ ${n} stamp${n > 1 ? 's' : ''} added${r.bonus ? ` (${r.added} + ${r.bonus} bonus)` : ''}. Now ${r.stamps}/${r.stampsRequired}.`;
-      if (r.tierUpgrade) msg += ` ⭐ Now a ${r.tierUpgrade} member!`;
+      if (r.tierUpgrade) msg += ` Now a ${r.tierUpgrade} member.`;
       await scan(result.customer.qr_token);
       setFlash(msg);
       loadActivity();
@@ -135,7 +135,7 @@ export default function StaffScan() {
         {me.role !== 'staff' ? <Link to="/admin" className="link">Admin</Link> : <Link to="/staff/security" className="link">Security</Link>}
         <button className="link" onClick={logout}>Sign out</button>
       </header>
-      {me.promo && <div className="promo-strip">⭐ {me.promo.label} is on: every purchase stamp counts {me.promo.multiplier}×. Add the real number of items; the bonus is automatic.</div>}
+      {me.promo && <div className="promo-strip">{me.promo.label} is on: every purchase stamp counts {me.promo.multiplier}×. Add the real number of items; the bonus is automatic.</div>}
 
       <div className="staff-grid">
         <section>
@@ -167,7 +167,7 @@ export default function StaffScan() {
               <p className="muted">
                 {c.visit_count} visit{c.visit_count === 1 ? '' : 's'}
                 {c.last_visit_at && ` · last ${fmtDate(c.last_visit_at)}`}
-                {c.birthday && c.birthday.slice(5) === new Date().toISOString().slice(5, 10) && ' · 🎂 Birthday today!'}
+                {c.birthday && c.birthday.slice(5) === new Date().toISOString().slice(5, 10) && ' · Birthday today'}
               </p>
               <StampGrid stamps={c.stamps} required={c.stamps_required} />
               <p className="count"><b>{c.stamps}</b> / {c.stamps_required} stamps</p>
@@ -232,7 +232,7 @@ export default function StaffScan() {
           <ul className="list small">
             {activity.map((a, i) => (
               <li key={i} className="row between">
-                <span>{a.type === 'stamp' ? `+${a.delta} · ${a.customer}` : `🎁 ${a.customer}`}</span>
+                <span>{a.type === 'stamp' ? `+${a.delta} · ${a.customer}` : `Redeemed · ${a.customer}`}</span>
                 <time className="muted">{fmtDate(a.at, true).slice(11)}</time>
               </li>
             ))}

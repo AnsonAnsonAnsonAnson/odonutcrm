@@ -51,6 +51,7 @@ The screen shows the member's tier (Sprinkle, Glazed, Golden). If it says **Now 
 
 ## Managers
 
-- **Members:** search, view history, add notes and tags, adjust stamps, gift a voucher, send a message.
-- **Dashboard:** check weekly. Watch the wallet add rate (aim for 50%+) and the redemption rate.
+- **Members:** search, filter by group, sort by money spent. Click a name for the full profile: visits, total spent, average bill, groups, every stamp and voucher, who they referred, notes and tags. From there you can adjust stamps, gift a voucher or send a message.
+- **Groups:** 11 ready-made groups that update themselves (New this week, Joined but never came back, One visit only, Almost there, Reward waiting, Regulars, Top spenders, At risk, Lapsed, Birthday this month, Referrers). Each has View, Download and Message buttons; Message opens Campaigns with the audience and a suggested message filled in. Messages only reach members who agreed to offers.
+- **Dashboard:** check weekly. The key numbers are repeat rate, active members, visits and average bill (compared with the previous 30 days), plus "Groups to act on": the customers a message can still win back.
 - **End of day:** nothing to do. Backups and reminders run by themselves.

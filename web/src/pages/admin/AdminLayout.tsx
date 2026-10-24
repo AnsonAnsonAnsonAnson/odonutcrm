@@ -64,6 +64,7 @@ export default function AdminLayout() {
               <p className="nav-group">Overview</p>
               <Item to="/admin" icon="dashboard" end>Dashboard</Item>
               <Item to="/admin/members" icon="members">Members</Item>
+              <Item to="/admin/groups" icon="layers">Groups</Item>
               <p className="nav-group">Marketing</p>
               <Item to="/admin/campaigns" icon="campaigns">Campaigns</Item>
               <Item to="/admin/rewards" icon="rewards">Rewards & promos</Item>

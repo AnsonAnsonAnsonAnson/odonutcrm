@@ -330,21 +330,24 @@ export async function customerVouchers(q: Queryable, customerId: string) {
   );
 }
 
-export async function customerHistory(q: Queryable, customerId: string) {
-  return many(
+/** A member's activity, newest first. Staff also see bill amounts and the notes left on stamps. */
+export async function customerHistory(q: Queryable, customerId: string, opts: { staff?: boolean } = {}) {
+  const rows = await many(
     q,
     `SELECT * FROM (
-       SELECT e.created_at AS at, 'stamp' AS type, e.delta, e.reason AS detail, s.name AS store
+       SELECT e.created_at AS at, 'stamp' AS type, e.delta, e.reason AS detail, s.name AS store, e.amount, e.note, u.name AS staff
          FROM stamp_events e JOIN cards c ON c.id = e.card_id LEFT JOIN stores s ON s.id = e.store_id
+         LEFT JOIN staff_users u ON u.id = e.staff_id
         WHERE c.customer_id = $1 AND e.reason <> 'reward_rollover'
        UNION ALL
-       SELECT v.created_at, 'voucher_issued', NULL, t.title, NULL
+       SELECT v.created_at, 'voucher_issued', NULL, t.title, NULL, NULL, v.source, NULL
          FROM vouchers v JOIN voucher_templates t ON t.id = v.template_id WHERE v.customer_id = $1
        UNION ALL
-       SELECT v.redeemed_at, 'voucher_redeemed', NULL, t.title, s.name
+       SELECT v.redeemed_at, 'voucher_redeemed', NULL, t.title, s.name, NULL, NULL, NULL
          FROM vouchers v JOIN voucher_templates t ON t.id = v.template_id LEFT JOIN stores s ON s.id = v.redeemed_store_id
         WHERE v.customer_id = $1 AND v.redeemed_at IS NOT NULL
      ) h ORDER BY at DESC LIMIT 100`,
     [customerId],
   );
+  return opts.staff ? rows : rows.map(({ amount: _a, note: _n, staff: _s, ...r }) => r);
 }

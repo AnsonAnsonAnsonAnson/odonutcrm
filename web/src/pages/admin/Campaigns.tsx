@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, ApiError, fmtDate } from '../../api';
 import { ErrorText } from '../../components/ui';
 import { useAdminMe } from './AdminLayout';
@@ -13,6 +14,13 @@ const SEGMENTS: Record<string, string> = {
   birthday_month: 'Birthday this month',
   tag: 'Has a tag',
   tier: 'In a membership tier',
+  joined_no_visit: 'Joined, never came back',
+  one_visit: 'One visit only',
+  regulars: 'Regulars',
+  top_spenders: 'Top spenders (top 10%)',
+  at_risk: 'At risk: regulars gone quiet',
+  reward_waiting: 'Reward about to expire',
+  referrers: 'Brought a friend',
 };
 
 const IDEAS = [
@@ -31,6 +39,17 @@ export default function Campaigns() {
   const [count, setCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = () => api('/api/admin/campaigns').then(setList);
+  // Arriving from Groups: start the form with that group's audience and a suggested message.
+  const [params] = useSearchParams();
+  useEffect(() => {
+    const id = params.get('group');
+    if (!id) return;
+    api('/api/admin/groups').then((groups: any[]) => {
+      const g = groups.find((x) => x.id === id);
+      if (!g) return;
+      setF((f) => ({ ...f, name: g.idea.name, message: g.idea.message, type: g.segment.type, days: g.segment.days ?? f.days, within: g.segment.within ?? f.within }));
+    });
+  }, [params]);
   useEffect(() => {
     load();
     api('/api/admin/templates').then((t) => setTemplates(t.filter((x: any) => x.active)));
@@ -86,7 +105,7 @@ export default function Campaigns() {
                 {Object.entries(SEGMENTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </label>
-            {['active', 'inactive', 'new'].includes(f.type) && <label>Days<input type="number" min={1} value={f.days} onChange={(e) => setF({ ...f, days: Number(e.target.value) })} /></label>}
+            {['active', 'inactive', 'new', 'joined_no_visit', 'one_visit', 'regulars', 'at_risk', 'reward_waiting'].includes(f.type) && <label>Days<input type="number" min={1} value={f.days} onChange={(e) => setF({ ...f, days: Number(e.target.value) })} /></label>}
             {f.type === 'near_reward' && <label>Within N stamps<input type="number" min={1} max={19} value={f.within} onChange={(e) => setF({ ...f, within: Number(e.target.value) })} /></label>}
             {f.type === 'tier' && (
               <label>Tier

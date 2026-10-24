@@ -20,6 +20,7 @@ const Dashboard = lazy(() => import('./pages/admin/Dashboard'));
 const Members = lazy(() => import('./pages/admin/Members').then((m) => ({ default: m.Members })));
 const MemberDetail = lazy(() => import('./pages/admin/Members').then((m) => ({ default: m.MemberDetail })));
 const Campaigns = lazy(() => import('./pages/admin/Campaigns'));
+const Groups = lazy(() => import('./pages/admin/Groups'));
 const Rewards = lazy(() => import('./pages/admin/Rewards'));
 const Settings = lazy(() => import('./pages/admin/Settings'));
 const Stores = lazy(() => import('./pages/admin/Stores'));
@@ -60,6 +61,7 @@ createRoot(document.getElementById('root')!).render(
                 <Route index element={<Dashboard />} />
                 <Route path="members" element={<Members />} />
                 <Route path="members/:id" element={<MemberDetail />} />
+                <Route path="groups" element={<Groups />} />
                 <Route path="campaigns" element={<Campaigns />} />
                 <Route path="rewards" element={<Rewards />} />
                 <Route path="settings" element={<Settings />} />

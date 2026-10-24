@@ -69,3 +69,22 @@ export function fmtDate(d: string | Date | null | undefined, withTime = false) {
 export function newKey() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
+
+/** Hong Kong dollars as shop staff write them: $85, $1,240, $42.50. */
+export function fmtMoney(n: number | string | null | undefined) {
+  const v = Number(n ?? 0);
+  return `$${v.toLocaleString('en-US', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 })}`;
+}
+
+/** "3 days ago", "2 months ago": how long since a date, for quick reading in the CRM. */
+export function fmtAgo(d: string | Date | null | undefined) {
+  if (!d) return '';
+  const days = Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return months === 1 ? '1 month ago' : `${months} months ago`;
+  const years = Math.floor(days / 365);
+  return years === 1 ? '1 year ago' : `${years} years ago`;
+}

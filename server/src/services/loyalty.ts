@@ -227,7 +227,7 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
         `INSERT INTO stamp_events (card_id, delta, reason, staff_id, store_id, note) VALUES ($1,$2,'reward_rollover',$3,$4,'Card completed')`,
         [card.id, -program.stamps_required, input.staffId, input.storeId],
       );
-      // Separate vouchers (e.g. 2 free donuts) so the member can use one now and save one.
+      // Usually one voucher; the owner can choose to split the reward into several.
       for (let i = 0; program.reward_template_id && i < program.reward_voucher_count; i++) {
         const v = await issueVoucher(tx, card.customer_id, program.reward_template_id, 'stamp_reward', card.id);
         if (v) rewards.push(v);

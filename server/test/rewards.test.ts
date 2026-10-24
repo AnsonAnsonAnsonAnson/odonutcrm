@@ -1,5 +1,5 @@
 // O! Donut's own reward rules: $40 per stamp, a welcome stamp and cream cheese donut on joining,
-// and 2 free-donut vouchers for 10 stamps.
+// and one "2 Free Donuts" voucher for 10 stamps.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
@@ -108,15 +108,14 @@ test('stamps are worked out from the bill: $40 each, rounded down', async () => 
   assert.equal(spend.rows[0].t, 165);
 });
 
-test('10 stamps issue two separate free donut vouchers', async () => {
+test('10 stamps issue one voucher for 2 free donuts, used in one go', async () => {
   const c = await signUp('lee@example.com', '+852 6100 0003');
   const qr = (await call('GET', '/api/me', { cookie: c })).json().qr_token;
   await stamp(qr, { amount: 200 }); // 1 + 5
   const r = await stamp(qr, { amount: 160 }); // + 4 = 10
   assert.equal(r.statusCode, 200, r.body);
   assert.equal(r.json().stamps, 0);
-  assert.deepEqual(r.json().rewards.map((v: any) => v.title), ['Free Donut', 'Free Donut']);
-  assert.notEqual(r.json().rewards[0].code, r.json().rewards[1].code);
+  assert.deepEqual(r.json().rewards.map((v: any) => v.title), ['2 Free Donuts']);
 });
 
 test('the till can send the order total instead of a stamp count', async () => {

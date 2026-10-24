@@ -162,7 +162,7 @@ th, td { padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align
 .scanner-frame { position: absolute; inset: 18%; border: 3px solid rgba(255,255,255,0.8); border-radius: 16px; pointer-events: none; }
 .scanner-error { color: #fff; padding: 24px; }
 .result .stamp-grid { max-width: 420px; }
-.stepper { display: flex; align-items: center; gap: 10px; margin: 16px 0; }
+.stepper { display: flex; align-items: center; gap: 10px; margin: 12px 0 16px; }
 .stepper > span { font-size: 24px; font-weight: 700; width: 36px; text-align: center; }
 .stepper .bill { display: flex; flex-direction: row; align-items: center; margin: 0; gap: 6px; font-weight: 700; font-size: 18px; }
 .stepper .bill input { width: 110px; font-size: 22px; padding: 8px 10px; }
@@ -356,3 +356,8 @@ details summary { cursor: pointer; color: var(--brand); font-weight: 600; font-s
 /* Card rules on the join page and in the member benefits */
 .rules { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 6px; }
 .rules li { background: #FFF6F9; border-radius: 10px; padding: 9px 12px; font-size: 14px; }
+
+/* Two-way switch, e.g. bill amount / number of stamps at the counter */
+.seg { display: inline-flex; background: #F3E9E4; border-radius: 999px; padding: 3px; margin-top: 14px; }
+.seg button { border: 0; background: none; padding: 7px 14px; border-radius: 999px; font: inherit; font-size: 14px; font-weight: 600; color: #6B5249; cursor: pointer; }
+.seg button.on { background: #fff; color: #3B1F14; box-shadow: 0 1px 3px rgba(0,0,0,.12); }

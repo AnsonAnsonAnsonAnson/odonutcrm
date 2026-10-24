@@ -14,7 +14,7 @@ A one-page version prints from **Admin → Print kit → Staff cheat sheet**. Th
 |---|---|
 | 1 | "Are you an O! Donut Club member?" |
 | 2 | **Yes:** they show the card in Apple Wallet, Google Wallet or the browser. Scan the QR. No phone? Search their mobile number. |
-| 3 | Check the name on screen, type the **bill total** (for example 85) and tap **Add stamps**. The screen works out the stamps: one for every $40, rounded down, so $85 gives 2. |
+| 3 | Check the name on screen, type the **bill total** (for example 85) and tap **Add stamps**. The screen works out the stamps: one for every $40, rounded down, so $85 gives 2. To add stamps without a bill, tap **Number of stamps** and use − / +. |
 | 4 | Read out the result: "That's 7 of 10, three more for a free donut." If a card completes, the screen says **Card complete** and the free donut voucher is already in their account. |
 | — | **No:** "Scan the poster, it takes 30 seconds and you get a free topping today." Stamp this purchase once they have joined (scan their new card). |
 
@@ -31,7 +31,7 @@ The screen shows the member's tier (Sprinkle, Glazed, Golden). If it says **Now 
 
 - **One stamp for every $40 on one bill**, rounded down. At most 5 per scan; a bigger bill needs a manager. (If the owner turns the $40 rule off in Settings, you count stamps with − / + instead.)
 - **New members** already have their first stamp and a **Free Cream Cheese Donut** voucher when they reach the counter.
-- **A full card (10 stamps)** gives **2 separate Free Donut vouchers**. The member can use one now and keep one for later.
+- **A full card (10 stamps)** gives one **2 Free Donuts** voucher. Hand over both donuts together; the voucher works once.
 - **Never stamp without a purchase.** Every stamp records your name, the shop and the time.
 - During a **bonus stamps** promotion the counter screen shows a yellow strip. Type the real bill total; the bonus is added automatically.
 - **Mistakes:** tell a manager. Managers fix them in **Admin → Members → (member) → Adjust stamps** with a reason.

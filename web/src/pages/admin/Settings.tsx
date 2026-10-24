@@ -140,7 +140,7 @@ export default function Settings() {
           <label>Brand name<input value={p.brand_name} onChange={set('brand_name')} /></label>
           <label>Stamps for a reward<input type="number" min={2} max={20} value={p.stamps_required} onChange={set('stamps_required', true)} /></label>
           <label>Reward voucher{tplSelect('reward_template_id')}</label>
-          <label>Vouchers per full card<input type="number" min={1} max={5} value={p.reward_voucher_count} onChange={set('reward_voucher_count', true)} /></label>
+          <label>Vouchers per full card (usually 1)<input type="number" min={1} max={5} value={p.reward_voucher_count} onChange={set('reward_voucher_count', true)} /></label>
         </div>
         <div className="row wrap">
           <label>Spend for 1 stamp ($, 0 = staff count stamps)<input type="number" min={0} step="0.5" value={Number(p.spend_per_stamp)} onChange={set('spend_per_stamp', true)} /></label>

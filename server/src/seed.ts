@@ -13,7 +13,7 @@ export async function seed(db: Db, opts: { adminEmail?: string; adminPassword?: 
           `INSERT INTO voucher_templates (title, description, kind, value, valid_days) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
           [title, description, kind, value, days],
         ))!.id;
-      const reward = await t('Free Donut', 'You completed your stamp card! Any classic donut on us.', 'free_item', 0, 60);
+      const reward = await t('2 Free Donuts', 'You completed your stamp card! Two classic donuts on us, used together in one visit.', 'free_item', 0, 60);
       const welcome = await t('Free Cream Cheese Donut', 'Welcome to the club! Enjoy a free cream cheese donut on us.', 'free_item', 0, 30);
       const birthday = await t('Birthday Donut', 'Happy birthday! Enjoy a free donut of your choice this month.', 'free_item', 0, 30);
       const winback = await t('$5 Cash Voucher', '$5 off any order. We miss you!', 'cash', 5, 14);

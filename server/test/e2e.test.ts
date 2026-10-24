@@ -165,7 +165,7 @@ test('completing the card issues the reward voucher and rolls extra stamps over'
   assert.equal(r.statusCode, 200, r.body);
   assert.equal(r.json().stamps, 1);
   assert.equal(r.json().rewards.length, 1);
-  assert.equal(r.json().rewards[0].title, 'Free Donut');
+  assert.equal(r.json().rewards[0].title, '2 Free Donuts');
   const me = (await call('GET', '/api/me', { cookie: alice })).json();
   assert.equal(me.rewards_earned, 1);
   assert.equal(me.lifetime_stamps, 11);
@@ -177,7 +177,7 @@ test('completing the card issues the reward voucher and rolls extra stamps over'
 
 test('vouchers redeem once at the counter', async () => {
   const vouchers = (await call('GET', '/api/me/vouchers', { cookie: alice })).json();
-  const reward = vouchers.find((v: any) => v.title === 'Free Donut');
+  const reward = vouchers.find((v: any) => v.title === '2 Free Donuts');
   let r = await call('POST', '/api/staff/scan', { cookie: staffCookie, body: { code: reward.code } });
   assert.equal(r.json().type, 'voucher');
   r = await call('POST', '/api/staff/redeem', { cookie: staffCookie, body: { code: reward.code } });

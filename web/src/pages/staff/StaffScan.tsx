@@ -185,6 +185,12 @@ export default function StaffScan() {
                 </div>
               )}
 
+              {per > 0 && (
+                <div className="seg" role="group" aria-label="How to add stamps">
+                  <button type="button" className={!byHand ? 'on' : ''} aria-pressed={!byHand} onClick={() => setByHand(false)}>Bill amount</button>
+                  <button type="button" className={byHand ? 'on' : ''} aria-pressed={byHand} onClick={() => setByHand(true)}>Number of stamps</button>
+                </div>
+              )}
               {useBill ? (
                 <form className="stepper" onSubmit={(e) => { e.preventDefault(); if (earned >= 1) stamp(); }}>
                   <label className="bill">
@@ -204,11 +210,6 @@ export default function StaffScan() {
                     {busy ? <Spinner /> : `Add ${count} stamp${count > 1 ? 's' : ''}`}
                   </button>
                 </div>
-              )}
-              {per > 0 && (
-                <button className="link" onClick={() => setByHand(!byHand)}>
-                  {byHand ? 'Enter the bill amount instead' : 'Choose the number of stamps instead'}
-                </button>
               )}
 
               <h3>Vouchers</h3>

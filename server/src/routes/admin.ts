@@ -3,8 +3,11 @@ import { z } from 'zod';
 import { many, one } from '../db.js';
 import { HttpError } from '../lib/auth.js';
 import { hashPassword } from '../lib/crypto.js';
+import { passwordProblem } from '../lib/security.js';
+import { bumpSessions } from '../services/staffSecurity.js';
 import { dashboard } from '../services/analytics.js';
-import { SegmentSchema, countSegment, sendCampaign } from '../services/campaigns.js';
+import { SegmentSchema, countSegment, segmentWhere, sendCampaign } from '../services/campaigns.js';
+import { groupById, groupSegment, groupSizes, groupsOf } from '../services/groups.js';
 import { addStamps, customerHistory, customerVouchers, issueVoucher } from '../services/loyalty.js';
 import { getProgram } from '../services/program.js';
 import { afterStamp, staffGuard } from './staff.js';
@@ -32,17 +35,37 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.get('/dashboard', async (req) => {
     await manager(req);
-    return dashboard(db, cfg.apple?.passTypeId ?? null);
+    return dashboard(db, cfg.apple?.passTypeId ?? null, cfg.tzOffsetHours);
   });
 
   // ---------- Customers ----------
+  // A member search, optionally narrowed to one ready-made group. Returns the WHERE clause and its params.
+  const memberFilter = (q: { q?: string; group?: string }) => {
+    const params: unknown[] = [];
+    const parts = ['true'];
+    if (q.q) {
+      // Typed % and _ are matched literally, not as wildcards.
+      params.push(`%${q.q.toLowerCase().replace(/[\\%_]/g, (ch) => '\\' + ch)}%`);
+      parts.push(`(lower(c.email) LIKE $1 OR lower(c.first_name || ' ' || c.last_name) LIKE $1 OR c.phone LIKE $1)`);
+    }
+    if (q.group) {
+      const g = groupById(q.group);
+      if (!g) throw new HttpError(404, 'No such group');
+      parts.push(segmentWhere(groupSegment(g), params));
+    }
+    return { where: parts.join(' AND '), params };
+  };
+  const listQuery = z.object({
+    q: z.string().trim().max(100).optional(),
+    group: z.string().max(40).optional(),
+  });
+
   app.get('/customers', async (req) => {
     await manager(req);
-    const q = z
-      .object({
-        q: z.string().trim().max(100).optional(),
+    const q = listQuery
+      .extend({
         page: z.coerce.number().int().min(1).default(1),
-        sort: z.enum(['recent', 'visits', 'stamps', 'last_visit']).default('recent'),
+        sort: z.enum(['recent', 'visits', 'stamps', 'last_visit', 'spend']).default('recent'),
       })
       .parse(req.query);
     const order = {
@@ -50,38 +73,43 @@ export async function adminRoutes(app: FastifyInstance) {
       visits: 'c.visit_count DESC',
       stamps: 'k.stamps DESC',
       last_visit: 'c.last_visit_at DESC NULLS LAST',
+      spend: 'c.total_spend DESC',
     }[q.sort];
-    const params: unknown[] = [];
-    let where = 'true';
-    if (q.q) {
-      params.push(`%${q.q.toLowerCase()}%`);
-      where = `(lower(c.email) LIKE $1 OR lower(c.first_name || ' ' || c.last_name) LIKE $1 OR c.phone LIKE $1)`;
-    }
-    params.push((q.page - 1) * 50);
+    const { where, params } = memberFilter(q);
     const rows = await many(
       db,
-      `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.created_at, c.last_visit_at, c.visit_count,
+      `SELECT c.id, c.first_name, c.last_name, c.email, c.phone, c.created_at, c.last_visit_at, c.visit_count, c.total_spend,
               c.marketing_opt_in, c.tags, k.stamps, k.rewards_earned, t.name AS tier,
               EXISTS (SELECT 1 FROM apple_registrations r WHERE r.serial_number = k.serial_number) AS apple_saved, k.google_saved
          FROM customers c JOIN cards k ON k.customer_id = c.id LEFT JOIN tiers t ON t.id = c.tier_id
-        WHERE ${where} ORDER BY ${order} LIMIT 50 OFFSET $${params.length}`,
-      params,
+        WHERE ${where} ORDER BY ${order}, c.id LIMIT 50 OFFSET $${params.length + 1}`,
+      [...params, (q.page - 1) * 50],
     );
-    const total = await one<{ n: number }>(db, `SELECT count(*)::int AS n FROM customers c WHERE ${where}`, params.slice(0, -1));
+    const total = await one<{ n: number }>(db, `SELECT count(*)::int AS n FROM customers c JOIN cards k ON k.customer_id = c.id WHERE ${where}`, params);
     return { rows, total: total?.n ?? 0 };
   });
 
   app.get('/customers.csv', async (req, reply) => {
     await owner(req);
+    const q = listQuery.parse(req.query);
+    const { where, params } = memberFilter(q);
     const rows = await many(
       db,
       `SELECT c.first_name, c.last_name, c.email, c.phone, c.birthday, c.gender, c.marketing_opt_in, c.created_at,
-              c.last_visit_at, c.visit_count, k.stamps, k.lifetime_stamps, k.rewards_earned, array_to_string(c.tags, ';') AS tags
-         FROM customers c JOIN cards k ON k.customer_id = c.id ORDER BY c.created_at`,
+              c.last_visit_at, c.visit_count, c.total_spend, k.stamps, k.lifetime_stamps, k.rewards_earned, array_to_string(c.tags, ';') AS tags
+         FROM customers c JOIN cards k ON k.customer_id = c.id WHERE ${where} ORDER BY c.created_at`,
+      params,
     );
     const cols = rows.length ? Object.keys(rows[0]) : ['email'];
     const csv = [cols.join(','), ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(','))].join('\n');
-    return reply.header('content-type', 'text/csv').header('content-disposition', 'attachment; filename="members.csv"').send(csv);
+    const name = q.group ? `members-${q.group}.csv` : 'members.csv';
+    return reply.header('content-type', 'text/csv').header('content-disposition', `attachment; filename="${name}"`).send(csv);
+  });
+
+  // ---------- Ready-made groups ----------
+  app.get('/groups', async (req) => {
+    await manager(req);
+    return groupSizes(db);
   });
 
   app.get('/customers/:id', async (req) => {
@@ -100,12 +128,22 @@ export async function adminRoutes(app: FastifyInstance) {
       [id],
     );
     if (!c) throw new HttpError(404, 'Customer not found');
-    const [vouchers, history, notifications] = await Promise.all([
+    const [vouchers, history, notifications, stats, groups, referred] = await Promise.all([
       customerVouchers(db, id),
-      customerHistory(db, id),
+      customerHistory(db, id, { staff: true }),
       many(db, 'SELECT kind, title, body, channels, created_at FROM notifications WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 50', [id]),
+      one(
+        db,
+        `SELECT min(e.created_at) FILTER (WHERE e.reason = 'purchase') AS first_visit,
+                count(e.amount)::int AS bills, avg(e.amount)::float8 AS avg_bill,
+                count(*) FILTER (WHERE e.reason = 'purchase' AND e.created_at > now() - interval '90 days')::int AS visits_90d
+           FROM stamp_events e JOIN cards k ON k.id = e.card_id WHERE k.customer_id = $1`,
+        [id],
+      ),
+      groupsOf(db, id),
+      many(db, `SELECT id, first_name, last_name, created_at, visit_count FROM customers WHERE referred_by = $1 ORDER BY created_at DESC LIMIT 20`, [id]),
     ]);
-    return { customer: c, vouchers, history, notifications };
+    return { customer: c, vouchers, history, notifications, stats, groups, referred };
   });
 
   app.patch('/customers/:id', async (req) => {
@@ -402,6 +440,16 @@ export async function adminRoutes(app: FastifyInstance) {
         multiplier_starts_at: z.string().datetime({ offset: true }).nullable(),
         multiplier_ends_at: z.string().datetime({ offset: true }).nullable(),
         multiplier_label: z.string().trim().min(1).max(40),
+        // A typed-in amount may arrive as text.
+        spend_per_stamp: z.coerce.number().min(0).max(10000),
+        signup_stamps: z.number().int().min(0).max(5),
+        reward_voucher_count: z.number().int().min(1).max(5),
+        reward_summary: z.string().trim().min(1).max(60),
+        google_client_id: z
+          .string()
+          .trim()
+          .regex(/^$|^[\w-]+\.apps\.googleusercontent\.com$/, 'A Google client ID ends in .apps.googleusercontent.com'),
+        verify_phone_at_signup: z.boolean(),
       })
       .partial()
       .parse(req.body);
@@ -411,7 +459,7 @@ export async function adminRoutes(app: FastifyInstance) {
       await db.query(`UPDATE program SET ${sets}, updated_at = now() WHERE id = 1`, keys.map((k) => b[k]));
     }
     // Look changes show on every pass. Touch cards so wallets refresh on their next check.
-    const visual = ['name', 'brand_name', 'stamps_required', 'background_color', 'foreground_color', 'label_color', 'terms'];
+    const visual = ['name', 'brand_name', 'stamps_required', 'background_color', 'foreground_color', 'label_color', 'terms', 'spend_per_stamp', 'reward_summary'];
     if (keys.some((k) => visual.includes(k))) await db.query('UPDATE cards SET updated_at = now()');
     return getProgram(db);
   });
@@ -428,7 +476,7 @@ export async function adminRoutes(app: FastifyInstance) {
     minStamps: z.number().int().min(0).max(10000),
     perks: z.string().trim().max(300).default(''),
     upgradeTemplateId: uuid.nullable().default(null),
-    color: hex.default('#3B1F14'),
+    color: hex.default('#0055A5'),
   });
   app.get('/tiers', async (req) => {
     await manager(req);
@@ -528,7 +576,8 @@ export async function adminRoutes(app: FastifyInstance) {
     await owner(req);
     return many(
       db,
-      `SELECT u.id, u.email, u.name, u.role, u.store_id, u.active, u.last_login_at, s.name AS store_name
+      `SELECT u.id, u.email, u.name, u.role, u.store_id, u.active, u.last_login_at, s.name AS store_name,
+              u.totp_enabled_at IS NOT NULL AS two_step, (u.locked_until > now()) AS locked
          FROM staff_users u LEFT JOIN stores s ON s.id = u.store_id ORDER BY u.created_at`,
     );
   });
@@ -536,13 +585,15 @@ export async function adminRoutes(app: FastifyInstance) {
     await owner(req);
     const b = z
       .object({
-        email: z.string().trim().toLowerCase().email(),
+        email: z.string().trim().toLowerCase().email().max(200),
         name: z.string().trim().min(1).max(60),
         role: z.enum(['owner', 'manager', 'staff']),
         storeId: uuid.nullable().default(null),
-        password: z.string().min(10, 'Use at least 10 characters').max(200),
+        password: z.string().max(200),
       })
       .parse(req.body);
+    const problem = passwordProblem(b.password, b.email);
+    if (problem) throw new HttpError(400, problem);
     return one(
       db,
       `INSERT INTO staff_users (email, name, role, store_id, password_hash) VALUES ($1,$2,$3,$4,$5)
@@ -558,17 +609,69 @@ export async function adminRoutes(app: FastifyInstance) {
         role: z.enum(['owner', 'manager', 'staff']).optional(),
         storeId: uuid.nullable().optional(),
         active: z.boolean().optional(),
-        password: z.string().min(10).max(200).optional(),
+        password: z.string().max(200).optional(),
+        resetTwoStep: z.literal(true).optional(),
+        unlock: z.literal(true).optional(),
+        signOut: z.literal(true).optional(),
       })
       .parse(req.body);
     if (id === me.id && (b.active === false || (b.role && b.role !== 'owner'))) {
       throw new HttpError(400, 'You cannot demote or disable your own account');
     }
+    const target = await one<{ email: string }>(db, 'SELECT email FROM staff_users WHERE id = $1', [id]);
+    if (!target) throw new HttpError(404, 'Not found');
+    if (b.password !== undefined) {
+      const problem = passwordProblem(b.password, target.email);
+      if (problem) throw new HttpError(400, problem);
+    }
     await db.query(
       `UPDATE staff_users SET role = coalesce($2, role), store_id = CASE WHEN $3 THEN $4::uuid ELSE store_id END,
-              active = coalesce($5, active), password_hash = coalesce($6, password_hash) WHERE id = $1`,
+              active = coalesce($5, active), password_hash = coalesce($6, password_hash)
+        WHERE id = $1`,
       [id, b.role ?? null, b.storeId !== undefined, b.storeId ?? null, b.active ?? null, b.password ? await hashPassword(b.password) : null],
     );
+    if (b.resetTwoStep) {
+      await db.query(`UPDATE staff_users SET totp_secret_enc = NULL, totp_enabled_at = NULL, totp_last_step = NULL, recovery_codes = '{}' WHERE id = $1`, [id]);
+    }
+    if (b.unlock || b.password) await db.query('UPDATE staff_users SET failed_logins = 0, locked_until = NULL WHERE id = $1', [id]);
+    // A new password, a disabled account or an explicit sign-out ends that person's open sessions.
+    if ((b.password || b.active === false || b.signOut || b.resetTwoStep) && id !== me.id) await bumpSessions(db, id);
     return { ok: true };
+  });
+
+  // ---------- Security ----------
+  app.get('/security', async (req) => {
+    await owner(req);
+    const p = await one<{ require_two_step: boolean }>(db, 'SELECT require_two_step FROM program WHERE id = 1');
+    const missing = await many(
+      db,
+      `SELECT name, email, role FROM staff_users WHERE active AND role IN ('owner','manager') AND totp_enabled_at IS NULL ORDER BY name`,
+    );
+    return { requireTwoStep: !!p?.require_two_step, managersWithoutTwoStep: missing };
+  });
+  app.patch('/security', async (req) => {
+    const me = await owner(req);
+    const { requireTwoStep } = z.object({ requireTwoStep: z.boolean() }).parse(req.body);
+    if (requireTwoStep) {
+      const self = await one<{ on: boolean }>(db, 'SELECT totp_enabled_at IS NOT NULL AS on FROM staff_users WHERE id = $1', [me.id]);
+      if (!self?.on) throw new HttpError(400, 'Turn on two-step sign-in for your own account first, so you are not locked out.');
+    }
+    await db.query('UPDATE program SET require_two_step = $1, updated_at = now() WHERE id = 1', [requireTwoStep]);
+    return { ok: true };
+  });
+  app.get('/activity-log', async (req) => {
+    await owner(req);
+    const q = z
+      .object({ limit: z.coerce.number().int().min(1).max(500).default(100), before: z.coerce.number().int().optional(), kind: z.enum(['all', 'sign-in', 'changes']).default('all') })
+      .parse(req.query);
+    return many(
+      db,
+      `SELECT a.id, a.at, a.action, a.target, a.ip, a.user_agent, a.details, coalesce(u.name, a.actor) AS who, u.email
+         FROM audit_log a LEFT JOIN staff_users u ON u.id = a.staff_id
+        WHERE ($2::bigint IS NULL OR a.id < $2)
+          AND ($3 = 'all' OR ($3 = 'sign-in') = (a.action LIKE 'login.%' OR a.action = 'logout'))
+        ORDER BY a.id DESC LIMIT $1`,
+      [q.limit, q.before ?? null, q.kind],
+    );
   });
 }

@@ -134,12 +134,31 @@ export default function Settings() {
       </div>
 
       <fieldset disabled={!owner} className="panel form">
+        <h3>Member sign-in</h3>
+        <label>
+          Google sign-in client ID (leave empty to hide the Google button)
+          <input value={p.google_client_id ?? ''} placeholder="1234567890-abc123.apps.googleusercontent.com" onChange={set('google_client_id')} />
+        </label>
+        <p className="muted">Create it in Google Cloud → APIs &amp; Services → Credentials → OAuth client ID (type: Web application), with your site address as an authorised JavaScript origin.</p>
+        <label className="check">
+          <input type="checkbox" checked={!!p.verify_phone_at_signup} onChange={set('verify_phone_at_signup')} />
+          New members confirm their mobile number with a text code (needs SMS set up; stops one person making many accounts)
+        </label>
+      </fieldset>
+
+      <fieldset disabled={!owner} className="panel form">
         <h3>Stamp card</h3>
         <div className="row wrap">
           <label>Program name<input value={p.name} onChange={set('name')} /></label>
           <label>Brand name<input value={p.brand_name} onChange={set('brand_name')} /></label>
           <label>Stamps for a reward<input type="number" min={2} max={20} value={p.stamps_required} onChange={set('stamps_required', true)} /></label>
           <label>Reward voucher{tplSelect('reward_template_id')}</label>
+          <label>Vouchers per full card (usually 1)<input type="number" min={1} max={5} value={p.reward_voucher_count} onChange={set('reward_voucher_count', true)} /></label>
+        </div>
+        <div className="row wrap">
+          <label>Spend for 1 stamp ($, 0 = staff count stamps)<input type="number" min={0} step="0.5" value={Number(p.spend_per_stamp)} onChange={set('spend_per_stamp', true)} /></label>
+          <label>Free stamps on joining<input type="number" min={0} max={5} value={p.signup_stamps} onChange={set('signup_stamps', true)} /></label>
+          <label>Reward in a few words (shown to members)<input value={p.reward_summary} maxLength={60} onChange={set('reward_summary')} /></label>
         </div>
         <div className="row wrap">
           <label>Max stamps per scan<input type="number" min={1} max={20} value={p.max_stamps_per_scan} onChange={set('max_stamps_per_scan', true)} /></label>

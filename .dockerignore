@@ -6,3 +6,8 @@ node_modules
 certs
 secrets
 .git
+# Never send member data or paperwork into the app image (and keep updates quick).
+backups
+docs
+caddy
+*.zip

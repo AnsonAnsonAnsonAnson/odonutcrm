@@ -23,6 +23,11 @@ export function createMailer(cfg: Config, log: (m: string) => void): Mailer {
     port: cfg.smtp.port,
     secure: cfg.smtp.port === 465,
     auth: cfg.smtp.user ? { user: cfg.smtp.user, pass: cfg.smtp.pass } : undefined,
+    // Keep a couple of connections to the mail server open between emails: sign-in codes go out
+    // without a fresh login (and TLS handshake) to Gmail every time.
+    pool: true,
+    maxConnections: 2,
+    maxMessages: 100,
     // Give up before a serverless function's time limit, so the member sees an error instead of a hang.
     connectionTimeout: 8_000,
     greetingTimeout: 8_000,

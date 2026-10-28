@@ -30,6 +30,7 @@ export function createSms(cfg: Config, log: (m: string) => void): SmsSender {
           'content-type': 'application/x-www-form-urlencoded',
         },
         body: params,
+        signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) throw new Error(`Twilio ${res.status}: ${await res.text()}`);
     },

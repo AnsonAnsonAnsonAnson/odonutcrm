@@ -100,7 +100,7 @@ export class Notifier {
         await webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
           JSON.stringify({ title: msg.title, body: msg.body, url: msg.url ?? '/me' }),
-          { TTL: 24 * 3600 },
+          { TTL: 24 * 3600, timeout: 10_000 },
         );
         ok = true;
       } catch (err: any) {

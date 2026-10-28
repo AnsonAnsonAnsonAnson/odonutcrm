@@ -58,6 +58,11 @@ const schema = z.object({
   TWILIO_FROM: z.string().optional(),
 
   TZ_OFFSET_HOURS: z.coerce.number().default(8),
+
+  // Which proxies may tell the app the visitor's real IP (X-Forwarded-For). Only the Caddy container
+  // on the private Docker network by default, so visitors cannot fake their IP to dodge rate limits.
+  // 'true' trusts any proxy (only for hosts like Netlify that set the header themselves).
+  TRUST_PROXY: z.string().default('loopback,linklocal,uniquelocal'),
 });
 
 function readSecret(file?: string, b64?: string): Buffer | undefined {
@@ -179,6 +184,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     google,
     vapid,
     tzOffsetHours: c.TZ_OFFSET_HOURS,
+    trustProxy: c.TRUST_PROXY === 'true' || env.NETLIFY ? true : c.TRUST_PROXY,
     twilio:
       c.TWILIO_ACCOUNT_SID && c.TWILIO_AUTH_TOKEN && c.TWILIO_FROM
         ? { accountSid: c.TWILIO_ACCOUNT_SID, authToken: c.TWILIO_AUTH_TOKEN, from: c.TWILIO_FROM }

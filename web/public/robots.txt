@@ -1,0 +1,6 @@
+# The member sign-up page may appear in search results; staff, admin and member pages may not.
+User-agent: *
+Disallow: /admin
+Disallow: /staff
+Disallow: /me
+Disallow: /api/

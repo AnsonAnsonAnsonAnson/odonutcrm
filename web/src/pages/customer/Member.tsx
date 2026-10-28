@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { api, ApiError, fmtDate } from '../../api';
 import { useConfig } from '../../config';
 import { LangButton, useI18n } from '../../i18n';
-import { ErrorText, Modal, Qr, Spinner, StampGrid } from '../../components/ui';
+import { ErrorText, Modal, Qr, Spinner, StampGrid, Wordmark } from '../../components/ui';
 import { WalletButtons } from './AddToWallet';
+import { Rules } from '../../components/Rules';
+import { Icon } from '../../components/icons';
 
 interface Me {
   first_name: string;
@@ -20,6 +22,7 @@ interface Me {
   web_push: boolean;
   marketing_opt_in: boolean;
   card_updated_at: string;
+  locale: string;
   tier: null | {
     current: { name: string; perks: string; color: string } | null;
     next: { name: string; perks: string; needed: number } | null;
@@ -76,7 +79,8 @@ export default function Member() {
   }, [load]);
 
   useEffect(() => {
-    if (me && locale) api('/api/me', { method: 'PATCH', body: { locale } }).catch(() => {});
+    // Remember the member's language for messages, only when it actually changed.
+    if (me && locale && me.locale !== locale) api('/api/me', { method: 'PATCH', body: { locale } }).catch(() => {});
   }, [locale, !!me]);
 
   if (!me) return <div className="center-page"><Spinner /></div>;
@@ -101,7 +105,7 @@ export default function Member() {
     setPromoMsg(null);
     try {
       const r = await api<{ title: string }>('/api/me/promo', { body: { code: promo } });
-      setPromoMsg(`🎉 ${r.title}`);
+      setPromoMsg(r.title);
       setPromo('');
       load();
     } catch (err) {
@@ -147,15 +151,14 @@ export default function Member() {
         <button className="avatar" onClick={() => setModal('settings')} aria-label={t('settings')}>
           {me.first_name.slice(0, 1).toUpperCase()}
         </button>
-        <img src="/icon.svg" alt={cfg.brandName} width={56} height={56} className="brand-mark" />
         <LangButton />
       </header>
 
       <section className="card" style={{ background: cfg.backgroundColor, color: cfg.foregroundColor }}>
         <div className="card-top">
-          <span>{cfg.programName}</span>
+          <span className="card-brand"><Wordmark name={cfg.brandName} height={20} /><small>{cfg.programName}</small></span>
           <button className="qr-btn" onClick={() => setModal('card')} aria-label="Show my QR code">
-            <svg viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm11-2h2v2h-2v-2zm-3 0h2v3h-2v-3zm5 3h3v2h-3v-2zm-5 2h3v3h-3v-3zm5 2h3v1h-3v-1z" /></svg>
+            <Icon name="qr" size={22} />
           </button>
         </div>
         <StampGrid stamps={me.stamps} required={me.stamps_required} />
@@ -167,7 +170,7 @@ export default function Member() {
 
       {cfg.stampPromo && (
         <p className="promo-note">
-          ⭐ <b>{cfg.stampPromo.label}</b>: {t('promoMultiplier').replace('{m}', String(cfg.stampPromo.multiplier))}
+          <Icon name="star" size={16} /> <b>{cfg.stampPromo.label}</b>: {t('promoMultiplier').replace('{m}', String(cfg.stampPromo.multiplier))}
           {cfg.stampPromo.endsAt && ` ${t('until')} ${fmtDate(cfg.stampPromo.endsAt)}`}
         </p>
       )}
@@ -191,20 +194,20 @@ export default function Member() {
       )}
 
       {!inWallet && <WalletButtons compact />}
-      {inWallet && <p className="ok-note">✓ {t('walletAdded')}</p>}
+      {inWallet && <p className="ok-note"><Icon name="check" size={16} /> {t('walletAdded')}</p>}
 
       <div className="tiles">
         <button className="tile big" onClick={() => setModal('benefits')}>
-          <span className="tile-icon">🎁</span>
+          <span className="tile-icon"><Icon name="gift" /></span>
           <span>{t('benefits')}</span>
           <small>{t('benefitsHint')}</small>
         </button>
         <div className="tile-col">
           <button className="tile" onClick={() => { setModal('promo'); setPromoMsg(null); setError(null); }}>
-            <span className="tile-icon">%</span>{t('promoCode')}
+            <span className="tile-icon"><Icon name="percent" /></span>{t('promoCode')}
           </button>
           <button className="tile" onClick={openHistory}>
-            <span className="tile-icon">↺</span>{t('history')}
+            <span className="tile-icon"><Icon name="history" /></span>{t('history')}
           </button>
         </div>
       </div>
@@ -218,26 +221,27 @@ export default function Member() {
           <button key={v.code} className="voucher" onClick={() => { setVoucher(v); setModal('voucher'); }}>
             <div className="voucher-body">
               <h3>{v.title}</h3>
-              <p>📅 {t('expiringOn')} {fmtDate(v.expires_at)}</p>
-              <p>◈ {t('singleUse')}</p>
+              <p><Icon name="calendar" size={14} /> {t('expiringOn')} {fmtDate(v.expires_at)}</p>
+              <p><Icon name="ticket" size={14} /> {t('singleUse')}</p>
             </div>
-            <div className="voucher-art"><img src="/icon.svg" alt="" width={64} height={64} /></div>
+            <div className="voucher-art"><Icon name="qr" size={30} /></div>
           </button>
         ))}
       </div>
 
       <div className="tiles grid2">
-        <button className="tile" onClick={openInbox}><span className="tile-icon">✉</span>{t('inbox')}</button>
-        <button className="tile" onClick={() => setModal('refer')}><span className="tile-icon">♥</span>{t('refer')}</button>
+        <button className="tile" onClick={openInbox}><span className="tile-icon"><Icon name="mail" /></span>{t('inbox')}</button>
+        <button className="tile" onClick={() => setModal('refer')}><span className="tile-icon"><Icon name="heart" /></span>{t('refer')}</button>
         {cfg.vapidPublicKey && (
           <button className="tile" onClick={enablePush} disabled={me.web_push}>
-            <span className="tile-icon">🔔</span>{me.web_push ? t('pushOn') : t('enablePush')}
+            <span className="tile-icon"><Icon name="bell" /></span>{me.web_push ? t('pushOn') : t('enablePush')}
           </button>
         )}
       </div>
       <ErrorText error={modal ? null : error} />
 
       <footer className="footer">{t('poweredBy')}</footer>
+      <div className="band" role="img" aria-label="" />
 
       <Modal open={modal === 'card'} onClose={() => setModal(null)}>
         <div className="center">
@@ -260,12 +264,13 @@ export default function Member() {
 
       <Modal open={modal === 'benefits'} onClose={() => setModal(null)} title={t('benefits')}>
         <h3>{t('howItWorks')}</h3>
+        <Rules />
         <p>{t('howBody')}</p>
         <h3>{t('perks')}</h3>
         <ul className="perks">
-          <li>🍩 {t('perkWelcome')}</li>
-          <li>🎂 {t('perkBirthday')}</li>
-          <li>💌 {t('perkReferral')}</li>
+          <li><Icon name="gift" /> {t('perkWelcome')}</li>
+          <li><Icon name="cake" /> {t('perkBirthday')}</li>
+          <li><Icon name="heart" /> {t('perkReferral')}</li>
         </ul>
         <p className="fine">{cfg.terms}</p>
       </Modal>
@@ -285,7 +290,7 @@ export default function Member() {
             <li key={i}>
               <span>
                 {h.type === 'stamp' && `${h.delta > 0 ? '+' : ''}${h.delta} ${t('stamps')}`}
-                {h.type === 'voucher_issued' && `🎁 ${h.detail}`}
+                {h.type === 'voucher_issued' && `+ ${h.detail}`}
                 {h.type === 'voucher_redeemed' && `✓ ${t('used')}: ${h.detail}`}
                 {h.store && <small> · {h.store}</small>}
               </span>

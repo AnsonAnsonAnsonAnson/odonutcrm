@@ -41,6 +41,8 @@ before(async () => {
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(db, () => {});
   await seed(db, { adminEmail: 'owner@example.com', adminPassword: 'correct horse battery', log: () => {} });
+  // These tests use the classic one-stamp-per-visit rules; rewards.test.ts covers the shop's own rules.
+  await db.query('UPDATE program SET signup_stamps = 0, reward_voucher_count = 1, verify_phone_at_signup = false');
   await db.query('UPDATE program SET stamp_cooldown_seconds = 0');
   cfg = loadConfig({
     APP_SECRET: 'y'.repeat(40),

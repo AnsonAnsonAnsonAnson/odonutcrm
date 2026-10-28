@@ -1,24 +1,44 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import QRCode from 'qrcode';
+
+// Hand-drawn line-art donut in the style of the O! Donut illustration: cream dough and icing with
+// lines in the card's text colour (currentColor). Same drawing as the Wallet pass strip.
+const disc = (r: number) => `M50 ${50 - r}a${r} ${r} 0 1 1 0 ${2 * r}a${r} ${r} 0 1 1 0 ${-2 * r}z`;
+const hole = (r: number) => `M50 ${50 - r}a${r} ${r} 0 1 0 0 ${2 * r}a${r} ${r} 0 1 0 0 ${-2 * r}z`;
+const icing = `M${Array.from({ length: 85 }, (_, i) => {
+  const t = (i / 84) * Math.PI * 2;
+  const r = 32 + 2.4 * Math.sin(7 * t + 0.6);
+  return `${(50 + r * Math.cos(t)).toFixed(2)} ${(50 + r * Math.sin(t)).toFixed(2)}`;
+}).join('L')}z`;
+const sprinkles = [[34, 33, 30], [60, 30, -40], [70, 52, 75], [58, 71, 15], [36, 66, -60], [27, 48, 95]];
 
 export function Donut({ filled, size = 48 }: { filled: boolean; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden className={filled ? 'donut on' : 'donut'}>
-      <circle cx="50" cy="50" r="48" fill="#fff" />
-      <circle cx="50" cy="50" r="40" fill={filled ? '#E3A869' : '#D9D9D9'} />
-      <circle cx="50" cy="50" r="36" fill={filled ? '#F25C8A' : '#C4C4C4'} />
-      {filled && (
-        <g>
-          <rect x="26" y="30" width="9" height="3" rx="1.5" fill="#fff" transform="rotate(20 30 31)" />
-          <rect x="62" y="26" width="9" height="3" rx="1.5" fill="#FFD23F" transform="rotate(-30 66 27)" />
-          <rect x="70" y="56" width="9" height="3" rx="1.5" fill="#3BCEAC" transform="rotate(60 74 57)" />
-          <rect x="40" y="72" width="9" height="3" rx="1.5" fill="#fff" transform="rotate(10 44 73)" />
-          <rect x="22" y="58" width="9" height="3" rx="1.5" fill="#FFD23F" transform="rotate(-50 26 59)" />
+      {filled ? (
+        <g stroke="currentColor" strokeLinejoin="round" strokeLinecap="round" fillRule="evenodd">
+          <path d={disc(42) + hole(12.5)} fill="#F4D49E" strokeWidth="2.8" />
+          <path d={icing + hole(12.5)} fill="#FFF4DC" strokeWidth="2.4" />
+          <g strokeWidth="2.4">
+            {sprinkles.map(([x, y, a]) => (
+              <line key={`${x}${y}`} x1={x - 3} y1={y} x2={x + 3} y2={y} transform={`rotate(${a} ${x} ${y})`} />
+            ))}
+          </g>
+        </g>
+      ) : (
+        <g className="ring" fill="none" stroke="currentColor" strokeOpacity="0.42" strokeWidth="2.4" strokeLinecap="round" strokeDasharray="0.1 6.2">
+          <circle cx="50" cy="50" r="41" />
+          <circle cx="50" cy="50" r="12.5" />
         </g>
       )}
-      <circle cx="50" cy="50" r="12" fill="#fff" />
     </svg>
   );
+}
+
+/** The O! Donut wordmark from the brand illustration, drawn in the current text colour. Falls back
+ *  to plain text if the shop renames itself in Settings. */
+export function Wordmark({ name, height = 22 }: { name: string; height?: number }) {
+  if (name.replace(/\s+/g, '').toLowerCase() !== 'o!donut') return <span className="wordmark-text">{name}</span>;
+  return <span className="wordmark" role="img" aria-label={name} style={{ height, width: Math.round(height * 6.5) }} />;
 }
 
 export function StampGrid({ stamps, required }: { stamps: number; required: number }) {
@@ -35,7 +55,15 @@ export function StampGrid({ stamps, required }: { stamps: number; required: numb
 export function Qr({ value, size = 220 }: { value: string; size?: number }) {
   const [src, setSrc] = useState('');
   useEffect(() => {
-    QRCode.toDataURL(value, { margin: 1, width: size * 2, errorCorrectionLevel: 'M' }).then(setSrc);
+    let live = true;
+    // The QR library loads only on pages that show a code.
+    import('qrcode')
+      .then((m) => (m.default ?? m).toDataURL(value, { margin: 1, width: size * 2, errorCorrectionLevel: 'M' }))
+      .then((url) => live && setSrc(url))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
   }, [value, size]);
   return src ? <img src={src} width={size} height={size} alt="QR code" className="qr" /> : <div style={{ width: size, height: size }} />;
 }

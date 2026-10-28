@@ -1,0 +1,11 @@
+# Used when visitors reach this server directly (no Cloudflare). Caddy gets a free Let's Encrypt
+# certificate on its own. To put Cloudflare in front, run: sudo bash scripts/cloudflare.sh
+import common.caddy
+
+{
+	import timeouts
+}
+
+{$DOMAIN} {
+	import app
+}

@@ -29,6 +29,8 @@ export default function StaffScan() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [manual, setManual] = useState('');
   const [count, setCount] = useState(1);
+  const [amount, setAmount] = useState('');
+  const [byHand, setByHand] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export default function StaffScan() {
       const r = await api<ScanResult>('/api/staff/scan', { body: { code } });
       setResult(r);
       setCount(1);
+      setAmount('');
     } catch (err) {
       setError((err as ApiError).message);
     }
@@ -74,13 +77,14 @@ export default function StaffScan() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ stamps: number; stampsRequired: number; rewards: { title: string }[]; tierUpgrade: string | null; bonus: number }>('/api/staff/stamp', {
-        body: { cardId: result.customer.card_id, count, idempotencyKey: newKey() },
+      const r = await api<{ stamps: number; stampsRequired: number; rewards: { title: string }[]; tierUpgrade: string | null; bonus: number; added: number }>('/api/staff/stamp', {
+        body: { cardId: result.customer.card_id, ...(useBill ? { amount: Number(amount) } : { count }), idempotencyKey: newKey() },
       });
+      const n = r.added + r.bonus;
       let msg = r.rewards.length
-        ? `🎉 Card complete! ${r.rewards.map((x) => x.title).join(', ')} issued. Now ${r.stamps}/${r.stampsRequired}.`
-        : `✓ ${count + r.bonus} stamp${count + r.bonus > 1 ? 's' : ''} added${r.bonus ? ` (${count} + ${r.bonus} bonus)` : ''}. Now ${r.stamps}/${r.stampsRequired}.`;
-      if (r.tierUpgrade) msg += ` ⭐ Now a ${r.tierUpgrade} member!`;
+        ? `Card complete! ${r.rewards.length > 1 ? `${r.rewards.length} × ` : ''}${r.rewards[0].title} issued. Now ${r.stamps}/${r.stampsRequired}.`
+        : `✓ ${n} stamp${n > 1 ? 's' : ''} added${r.bonus ? ` (${r.added} + ${r.bonus} bonus)` : ''}. Now ${r.stamps}/${r.stampsRequired}.`;
+      if (r.tierUpgrade) msg += ` Now a ${r.tierUpgrade} member.`;
       await scan(result.customer.qr_token);
       setFlash(msg);
       loadActivity();
@@ -115,6 +119,12 @@ export default function StaffScan() {
   if (!me) return <div className="center-page"><Spinner /></div>;
   const c = result?.customer;
   const max = me.program.max_stamps_per_scan;
+  // Spend-based stamps: staff type the bill and the stamps are worked out (rounded down).
+  const per = Number(me.program.spend_per_stamp) || 0;
+  const useBill = per > 0 && !byHand;
+  const bill = Number(amount);
+  const earned = amount && bill > 0 ? Math.floor(Math.round(bill * 100) / Math.round(per * 100)) : 0;
+  const money = (v: number) => '$' + (Number.isInteger(v) ? v : v.toFixed(2));
 
   return (
     <div className="staff">
@@ -122,10 +132,10 @@ export default function StaffScan() {
         <b>{me.program.brand_name} · Counter</b>
         <span className="muted">{me.name}{me.store ? ` @ ${me.store.name}` : ''}</span>
         <span className="spacer" />
-        {me.role !== 'staff' && <Link to="/admin" className="link">Admin</Link>}
+        {me.role !== 'staff' ? <Link to="/admin" className="link">Admin</Link> : <Link to="/staff/security" className="link">Security</Link>}
         <button className="link" onClick={logout}>Sign out</button>
       </header>
-      {me.promo && <div className="promo-strip">⭐ {me.promo.label} is on: every purchase stamp counts {me.promo.multiplier}×. Add the real number of items; the bonus is automatic.</div>}
+      {me.promo && <div className="promo-strip">{me.promo.label} is on: every purchase stamp counts {me.promo.multiplier}×. Add the real number of items; the bonus is automatic.</div>}
 
       <div className="staff-grid">
         <section>
@@ -157,7 +167,7 @@ export default function StaffScan() {
               <p className="muted">
                 {c.visit_count} visit{c.visit_count === 1 ? '' : 's'}
                 {c.last_visit_at && ` · last ${fmtDate(c.last_visit_at)}`}
-                {c.birthday && c.birthday.slice(5) === new Date().toISOString().slice(5, 10) && ' · 🎂 Birthday today!'}
+                {c.birthday && c.birthday.slice(5) === new Date().toISOString().slice(5, 10) && ' · Birthday today'}
               </p>
               <StampGrid stamps={c.stamps} required={c.stamps_required} />
               <p className="count"><b>{c.stamps}</b> / {c.stamps_required} stamps</p>
@@ -175,14 +185,32 @@ export default function StaffScan() {
                 </div>
               )}
 
-              <div className="stepper">
-                <button className="btn" onClick={() => setCount(Math.max(1, count - 1))} aria-label="Fewer">−</button>
-                <span>{count}</span>
-                <button className="btn" onClick={() => setCount(Math.min(max, count + 1))} aria-label="More">+</button>
-                <button className="btn primary grow" disabled={busy} onClick={stamp}>
-                  {busy ? <Spinner /> : `Add ${count} stamp${count > 1 ? 's' : ''}`}
-                </button>
-              </div>
+              {per > 0 && (
+                <div className="seg" role="group" aria-label="How to add stamps">
+                  <button type="button" className={!byHand ? 'on' : ''} aria-pressed={!byHand} onClick={() => setByHand(false)}>Bill amount</button>
+                  <button type="button" className={byHand ? 'on' : ''} aria-pressed={byHand} onClick={() => setByHand(true)}>Number of stamps</button>
+                </div>
+              )}
+              {useBill ? (
+                <form className="stepper" onSubmit={(e) => { e.preventDefault(); if (earned >= 1) stamp(); }}>
+                  <label className="bill">
+                    Bill $
+                    <input inputMode="decimal" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))} autoFocus />
+                  </label>
+                  <button className="btn primary grow" disabled={busy || earned < 1 || earned > max}>
+                    {busy ? <Spinner /> : earned > max ? `Over ${max} stamps: ask a manager` : earned >= 1 ? `Add ${earned} stamp${earned > 1 ? 's' : ''}` : `Every ${money(per)} = 1 stamp`}
+                  </button>
+                </form>
+              ) : (
+                <div className="stepper">
+                  <button className="btn" onClick={() => setCount(Math.max(1, count - 1))} aria-label="Fewer">−</button>
+                  <span>{count}</span>
+                  <button className="btn" onClick={() => setCount(Math.min(max, count + 1))} aria-label="More">+</button>
+                  <button className="btn primary grow" disabled={busy} onClick={stamp}>
+                    {busy ? <Spinner /> : `Add ${count} stamp${count > 1 ? 's' : ''}`}
+                  </button>
+                </div>
+              )}
 
               <h3>Vouchers</h3>
               {result!.vouchers.length === 0 && <p className="muted">No active vouchers.</p>}
@@ -204,7 +232,7 @@ export default function StaffScan() {
           <ul className="list small">
             {activity.map((a, i) => (
               <li key={i} className="row between">
-                <span>{a.type === 'stamp' ? `+${a.delta} · ${a.customer}` : `🎁 ${a.customer}`}</span>
+                <span>{a.type === 'stamp' ? `+${a.delta} · ${a.customer}` : `Redeemed · ${a.customer}`}</span>
                 <time className="muted">{fmtDate(a.at, true).slice(11)}</time>
               </li>
             ))}

@@ -1,10 +1,10 @@
-import { many, one, type Db } from '../db.js';
+import { many, one, type Db, type Tx } from '../db.js';
 import type { Config } from '../config.js';
 import { issueVoucher } from './loyalty.js';
 import type { Notifier } from './notify.js';
 import { getProgram } from './program.js';
 import { sendCampaign } from './campaigns.js';
-import { listTiers, reevaluateTier } from './tiers.js';
+import { listTiers, reevaluateTier, tierFor } from './tiers.js';
 
 const LOCK_ID = 77001;
 // Daily automations wait until this local hour so pushes never land overnight.
@@ -92,12 +92,22 @@ export async function runTierReview(db: Db, notifier: Notifier, log: (m: string)
   const program = await getProgram(db);
   if (!program.tiers_enabled) return 0;
   const tiers = await listTiers(db);
-  const people = await many<{ id: string }>(
+  if (!tiers.length) return 0;
+  // Everyone's stamp count in one query; only members whose tier should change are then updated
+  // one by one (instead of three queries for every member, every day).
+  const people = await many<{ id: string; tier_id: string | null; n: number }>(
     db,
-    `SELECT c.id FROM customers c LEFT JOIN tiers t ON t.id = c.tier_id WHERE c.tier_id IS NULL OR t.min_stamps > 0`,
+    `SELECT c.id, c.tier_id, coalesce(sum(e.delta) FILTER (WHERE e.delta > 0 AND e.reason IN ('purchase','bonus')), 0)::int AS n
+       FROM customers c LEFT JOIN tiers t ON t.id = c.tier_id
+       JOIN cards k ON k.customer_id = c.id
+       LEFT JOIN stamp_events e ON e.card_id = k.id AND e.created_at > now() - make_interval(days => $1)
+      WHERE c.tier_id IS NULL OR t.min_stamps > 0
+      GROUP BY c.id, c.tier_id`,
+    [program.tier_window_days],
   );
   let changed = 0;
   for (const p of people) {
+    if ((tierFor(tiers, p.n)?.id ?? null) === p.tier_id) continue;
     const ch = await reevaluateTier(db, p.id, program.tier_window_days, tiers);
     if (ch) {
       changed++;
@@ -135,23 +145,42 @@ export async function runExpiry(db: Db, notifier: Notifier, log: (m: string) => 
 }
 
 export async function tick(db: Db, cfg: Config, notifier: Notifier, log: (m: string) => void) {
-  const client = await db.connect();
+  const step = async (name: string, fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+    } catch (err: any) {
+      log(`job ${name} failed: ${err.message}`);
+    }
+  };
+  // While the database is unreachable this just logs and tries again next minute (never crashes the app).
+  let client: Tx;
+  try {
+    client = await db.connect();
+  } catch (err: any) {
+    log(`jobs tick skipped: ${err.message}`);
+    return;
+  }
   try {
     const { rows } = await client.query('SELECT pg_try_advisory_lock($1) AS ok', [LOCK_ID]);
     if (!rows[0].ok) return; // another instance is running jobs
     try {
       const due = await many<{ id: string }>(db, `SELECT id FROM campaigns WHERE status = 'scheduled' AND scheduled_at <= now()`);
-      for (const c of due) await sendCampaign(db, notifier, c.id, log);
+      for (const c of due) await step(`campaign ${c.id}`, () => sendCampaign(db, notifier, c.id, log));
 
       const t = localNow(cfg);
       if (t.hour >= DAILY_HOUR && (await once(db, 'daily', t.date))) {
-        await runBirthdays(db, cfg, notifier, log);
-        await runWinback(db, notifier, log);
-        await runNearReward(db, notifier, log);
-        await runTierReview(db, notifier, log);
-        await runExpiry(db, notifier, log);
-        await db.query(`DELETE FROM otp_codes WHERE created_at < now() - interval '2 days'`);
-        await db.query(`DELETE FROM apple_logs WHERE created_at < now() - interval '30 days'`);
+        // Each step runs even if an earlier one fails, so one problem can't skip the day's birthdays etc.
+        await step('birthdays', () => runBirthdays(db, cfg, notifier, log));
+        await step('win-back', () => runWinback(db, notifier, log));
+        await step('near-reward', () => runNearReward(db, notifier, log));
+        await step('tier review', () => runTierReview(db, notifier, log));
+        await step('voucher expiry', () => runExpiry(db, notifier, log));
+        await step('clean-up', async () => {
+          await db.query(`DELETE FROM otp_codes WHERE created_at < now() - interval '2 days'`);
+          await db.query(`DELETE FROM apple_logs WHERE created_at < now() - interval '30 days'`);
+          // The activity log keeps 13 months: enough for a yearly review, without growing forever.
+          await db.query(`DELETE FROM audit_log WHERE at < now() - interval '13 months'`);
+        });
       }
     } finally {
       await client.query('SELECT pg_advisory_unlock($1)', [LOCK_ID]);

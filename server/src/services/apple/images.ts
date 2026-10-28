@@ -41,34 +41,35 @@ function cached(key: string, render: () => Promise<Buffer>): Promise<Buffer> {
   return hit;
 }
 
-// Same look as the member site: a donut with a real hole so the card colour shows through, and a
-// faint dashed ring for stamps still to collect (visible on dark and light card colours).
-function donutSvg(size: number, filled: boolean, icing: string): string {
-  const c = size / 2;
-  const ring = (R: number, r: number) =>
-    `M${c} ${c - R}a${R} ${R} 0 1 1 0 ${2 * R}a${R} ${R} 0 1 1 0 ${-2 * R}zM${c} ${c - r}a${r} ${r} 0 1 0 0 ${2 * r}a${r} ${r} 0 1 0 0 ${-2 * r}z`;
+// Same drawing as the member site: a hand-drawn line-art donut in the style of the O! Donut
+// illustration (cream dough and icing, lines in the card's text colour), and a faint dotted ring
+// for stamps still to collect.
+function donutSvg(size: number, filled: boolean, ink: string): string {
+  const k = size / 100;
+  const n = (v: number) => +(v * k).toFixed(2);
+  const disc = (r: number) => `M${n(50)} ${n(50 - r)}a${n(r)} ${n(r)} 0 1 1 0 ${n(2 * r)}a${n(r)} ${n(r)} 0 1 1 0 ${n(-2 * r)}z`;
+  const hole = (r: number) => `M${n(50)} ${n(50 - r)}a${n(r)} ${n(r)} 0 1 0 0 ${n(2 * r)}a${n(r)} ${n(r)} 0 1 0 0 ${n(-2 * r)}z`;
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
   if (!filled) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-    <path d="${ring(size * 0.45, size * 0.14)}" fill="none" stroke="#9CA3AF" stroke-opacity="0.6" stroke-width="${size * 0.025}" stroke-dasharray="${size * 0.05} ${size * 0.05}"/>
-  </svg>`;
+    return `${open}<g fill="none" stroke="${ink}" stroke-opacity="0.42" stroke-width="${n(2.4)}" stroke-linecap="round" stroke-dasharray="${n(0.1)} ${n(6.2)}">
+    <circle cx="${n(50)}" cy="${n(50)}" r="${n(41)}"/><circle cx="${n(50)}" cy="${n(50)}" r="${n(12.5)}"/></g></svg>`;
   }
-  const sprinkles = [
-    [-0.18, -0.22, 25], [0.15, -0.25, -35], [0.25, 0.08, 65], [-0.03, 0.25, 10], [-0.26, 0.07, -55],
-  ]
-    .map(([dx, dy, rot]) => {
-      const x = c + dx * size;
-      const y = c + dy * size;
-      return `<rect x="${x - size * 0.045}" y="${y - size * 0.015}" width="${size * 0.09}" height="${size * 0.03}" rx="${size * 0.015}" fill="#FFFFFF" opacity="0.9" transform="rotate(${rot} ${x} ${y})"/>`;
-    })
+  const icing = Array.from({ length: 85 }, (_, i) => {
+    const t = (i / 84) * Math.PI * 2;
+    const r = 32 + 2.4 * Math.sin(7 * t + 0.6);
+    return `${n(50 + r * Math.cos(t))} ${n(50 + r * Math.sin(t))}`;
+  }).join('L');
+  const sprinkles = [[34, 33, 30], [60, 30, -40], [70, 52, 75], [58, 71, 15], [36, 66, -60], [27, 48, 95]]
+    .map(([x, y, a]) => `<line x1="${n(x - 3)}" y1="${n(y)}" x2="${n(x + 3)}" y2="${n(y)}" transform="rotate(${a} ${n(x)} ${n(y)})"/>`)
     .join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-    <path d="${ring(size * 0.46, size * 0.14)}" fill="#E8B46C" fill-rule="evenodd"/>
-    <path d="${ring(size * 0.39, size * 0.17)}" fill="${icing}" fill-rule="evenodd"/>
-    ${sprinkles}
-  </svg>`;
+  return `${open}<g stroke="${ink}" stroke-linejoin="round" stroke-linecap="round" fill-rule="evenodd">
+    <path d="${disc(42)}${hole(12.5)}" fill="#F4D49E" stroke-width="${n(2.8)}"/>
+    <path d="M${icing}z${hole(12.5)}" fill="#FFF4DC" stroke-width="${n(2.4)}"/>
+    <g stroke-width="${n(2.4)}">${sprinkles}</g>
+  </g></svg>`;
 }
 
-async function stampTile(size: number, filled: boolean, icing: string): Promise<Buffer> {
+async function stampTile(size: number, filled: boolean, ink: string): Promise<Buffer> {
   const custom = asset(filled ? 'stamp-on.png' : 'stamp-off.png');
   if (custom) {
     const circle = Buffer.from(
@@ -77,7 +78,7 @@ async function stampTile(size: number, filled: boolean, icing: string): Promise<
     const inner = await sharp(custom).resize(Math.round(size * 0.78), Math.round(size * 0.78), { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
     return sharp(circle).composite([{ input: inner, gravity: 'center' }]).png().toBuffer();
   }
-  return sharp(Buffer.from(donutSvg(size, filled, icing))).png().toBuffer();
+  return sharp(Buffer.from(donutSvg(size, filled, ink))).png().toBuffer();
 }
 
 const stripCache = new Map<string, Buffer>();
@@ -90,7 +91,8 @@ export async function renderStrip(opts: {
   stamps: number;
   required: number;
   background: string;
-  icing: string;
+  /** Line colour of the donuts: the card's text colour. */
+  ink: string;
   scale: 1 | 2 | 3;
 }): Promise<Buffer> {
   // Includes the custom stamp art's version, so replaced art shows without a restart.
@@ -109,7 +111,7 @@ export async function renderStrip(opts: {
   const x0 = Math.round((W - totalW) / 2);
   const y0 = Math.round((H - totalH) / 2);
 
-  const [on, off] = await Promise.all([stampTile(tile, true, opts.icing), stampTile(tile, false, opts.icing)]);
+  const [on, off] = await Promise.all([stampTile(tile, true, opts.ink), stampTile(tile, false, opts.ink)]);
   const composites = [];
   for (let i = 0; i < opts.required; i++) {
     const r = Math.floor(i / cols);
@@ -136,6 +138,11 @@ function escapeXml(s: string) {
   return s.replace(/[<>&'"]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[ch]!);
 }
 
+// The O! Donut wordmark, cut from the brand illustration (alpha mask), recoloured to the card's
+// text colour. Used while the shop is still called O! Donut and no logo.png is dropped in.
+const brandDir = () => join(assetDir(), '..', 'brand');
+const isOdonut = (name: string) => name.replace(/\s+/g, '').toLowerCase() === 'o!donut';
+
 export function renderLogo(scale: 1 | 2 | 3, brandName: string, color: string): Promise<Buffer> {
   const custom = asset('logo.png');
   return cached(`logo|${scale}|${brandName}|${color}|${!!custom}`, () => drawLogo(scale, brandName, color, custom));
@@ -145,15 +152,36 @@ async function drawLogo(scale: 1 | 2 | 3, brandName: string, color: string, cust
   const w = 160 * scale;
   const h = 50 * scale;
   if (custom) return sharp(custom).resize(w, h, { fit: 'inside' }).png().toBuffer();
+  if (isOdonut(brandName)) {
+    try {
+      const mask = await sharp(readFileSync(join(brandDir(), 'wordmark.png')))
+        .resize(Math.round(w * 0.82), Math.round(h * 0.5), { fit: 'inside' })
+        .extractChannel('alpha')
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      return sharp({ create: { width: mask.info.width, height: mask.info.height, channels: 3, background: color } })
+        .joinChannel(mask.data, { raw: { width: mask.info.width, height: mask.info.height, channels: 1 } })
+        .png()
+        .toBuffer();
+    } catch {
+      // Art missing: fall through to the drawn name.
+    }
+  }
   return sharp(Buffer.from(logoSvg(w, h, brandName, color))).png().toBuffer();
 }
 
-export function renderIcon(size: number, icing: string): Promise<Buffer> {
+/** Square icon for notifications and the lock screen: a donut on the card colour. */
+export function renderIcon(size: number, background: string, ink: string): Promise<Buffer> {
   const custom = asset('icon.png');
-  return cached(`icon|${size}|${icing}|${!!custom}`, () => drawIcon(size, icing, custom));
+  return cached(`icon|${size}|${background}|${ink}|${!!custom}`, () => drawIcon(size, background, ink, custom));
 }
 
-async function drawIcon(size: number, icing: string, custom: Buffer | null): Promise<Buffer> {
+async function drawIcon(size: number, background: string, ink: string, custom: Buffer | null): Promise<Buffer> {
   if (custom) return sharp(custom).resize(size, size, { fit: 'cover' }).png().toBuffer();
-  return sharp(Buffer.from(donutSvg(size, true, icing))).png().toBuffer();
+  const inner = Math.round(size * 0.78);
+  const donut = await sharp(Buffer.from(donutSvg(inner, true, ink))).png().toBuffer();
+  return sharp({ create: { width: size, height: size, channels: 4, background } })
+    .composite([{ input: donut, gravity: 'center' }])
+    .png()
+    .toBuffer();
 }

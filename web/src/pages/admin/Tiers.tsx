@@ -3,7 +3,7 @@ import { api, ApiError } from '../../api';
 import { ErrorText } from '../../components/ui';
 import { useAdminMe } from './AdminLayout';
 
-const blank = { name: '', minStamps: 0, perks: '', upgradeTemplateId: '', color: '#3B1F14' };
+const blank = { name: '', minStamps: 0, perks: '', upgradeTemplateId: '', color: '#0055A5' };
 
 export default function Tiers() {
   const me = useAdminMe();

@@ -476,7 +476,7 @@ export async function adminRoutes(app: FastifyInstance) {
     minStamps: z.number().int().min(0).max(10000),
     perks: z.string().trim().max(300).default(''),
     upgradeTemplateId: uuid.nullable().default(null),
-    color: hex.default('#3B1F14'),
+    color: hex.default('#0055A5'),
   });
   app.get('/tiers', async (req) => {
     await manager(req);

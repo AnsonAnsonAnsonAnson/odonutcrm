@@ -41,12 +41,13 @@ export async function walletRoutes(app: FastifyInstance) {
     const [stamps, required] = file.replace('.png', '').split('-').map(Number);
     if (required < 2 || required > 20 || stamps > required) throw new HttpError(404, 'Not found');
     const p = await getProgram(db);
-    const png = await renderStrip({ stamps, required, background: p.background_color, icing: '#F2709E', scale: 3 });
+    const png = await renderStrip({ stamps, required, background: p.background_color, ink: p.foreground_color, scale: 3 });
     return reply.header('content-type', 'image/png').header('cache-control', 'public, max-age=86400').send(png);
   });
 
   app.get('/assets/logo-square.png', async (_req, reply) => {
-    const png = await renderIcon(660, '#F2709E');
+    const p = await getProgram(db);
+    const png = await renderIcon(660, p.background_color, p.foreground_color);
     return reply.header('content-type', 'image/png').header('cache-control', 'public, max-age=86400').send(png);
   });
 }

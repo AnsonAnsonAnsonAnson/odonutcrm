@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../../api';
 import { useConfig } from '../../config';
 import { LangButton, useI18n } from '../../i18n';
-import { ErrorText, Spinner } from '../../components/ui';
+import { ErrorText, Spinner, Wordmark } from '../../components/ui';
 import { Rules } from '../../components/Rules';
 import { GoogleButton, inAppBrowser } from '../../components/GoogleButton';
 import { Icon } from '../../components/icons';
@@ -170,10 +170,10 @@ export default function Join() {
   const set = (k: keyof typeof form) => (e: any) =>
     setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
 
-  const top = (
+  // The first screen shows the brand illustration, so its top bar only needs the language switch.
+  const top = (brand = true) => (
     <header className="auth-top">
-      <img src="/icon.svg" alt="" width={32} height={32} />
-      <span>{cfg.brandName}</span>
+      {brand && <Wordmark name={cfg.brandName} height={20} />}
       <LangButton />
     </header>
   );
@@ -182,7 +182,7 @@ export default function Join() {
     const phoneReady = !cfg.verifyPhone || (phoneSentTo === signupPhone && form.phoneCode.length === 6);
     return (
       <div className="auth">
-        {top}
+        {top()}
         <main className="auth-card">
           <h1>{t('finishProfile')}</h1>
           <p className="lead">{t('finishLead')}</p>
@@ -283,9 +283,9 @@ export default function Join() {
 
   return (
     <div className="auth">
-      {top}
-      <main className="auth-card">
-        <img src="/icon.svg" alt="" width={52} height={52} className="auth-logo" />
+      {top(false)}
+      <main className="auth-card has-hero">
+        <img src="/brand/illustration.webp" alt="" width={1600} height={800} className="hero" />
         <h1>{t('joinTitle').replace('{brand}', cfg.brandName)}</h1>
         <p className="lead">{t('joinLead')}</p>
         <Rules joining />

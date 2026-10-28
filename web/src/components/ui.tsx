@@ -1,29 +1,44 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-// A ring with a real hole (even-odd fill), so the card colour shows through the middle.
-const ring = (R: number, r: number) =>
-  `M50 ${50 - R}a${R} ${R} 0 1 1 0 ${2 * R}a${R} ${R} 0 1 1 0 ${-2 * R}zM50 ${50 - r}a${r} ${r} 0 1 0 0 ${2 * r}a${r} ${r} 0 1 0 0 ${-2 * r}z`;
+// Hand-drawn line-art donut in the style of the O! Donut illustration: cream dough and icing with
+// lines in the card's text colour (currentColor). Same drawing as the Wallet pass strip.
+const disc = (r: number) => `M50 ${50 - r}a${r} ${r} 0 1 1 0 ${2 * r}a${r} ${r} 0 1 1 0 ${-2 * r}z`;
+const hole = (r: number) => `M50 ${50 - r}a${r} ${r} 0 1 0 0 ${2 * r}a${r} ${r} 0 1 0 0 ${-2 * r}z`;
+const icing = `M${Array.from({ length: 85 }, (_, i) => {
+  const t = (i / 84) * Math.PI * 2;
+  const r = 32 + 2.4 * Math.sin(7 * t + 0.6);
+  return `${(50 + r * Math.cos(t)).toFixed(2)} ${(50 + r * Math.sin(t)).toFixed(2)}`;
+}).join('L')}z`;
+const sprinkles = [[34, 33, 30], [60, 30, -40], [70, 52, 75], [58, 71, 15], [36, 66, -60], [27, 48, 95]];
 
 export function Donut({ filled, size = 48 }: { filled: boolean; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden className={filled ? 'donut on' : 'donut'}>
       {filled ? (
-        <>
-          <path d={ring(46, 14)} fill="#E8B46C" fillRule="evenodd" />
-          <path d={ring(39, 17)} fill="#F2709E" fillRule="evenodd" />
-          <g fill="#fff" opacity="0.9">
-            <rect x="30" y="27" width="9" height="3" rx="1.5" transform="rotate(25 34 28)" />
-            <rect x="60" y="24" width="9" height="3" rx="1.5" transform="rotate(-35 64 25)" />
-            <rect x="70" y="56" width="9" height="3" rx="1.5" transform="rotate(65 74 57)" />
-            <rect x="42" y="73" width="9" height="3" rx="1.5" transform="rotate(10 46 74)" />
-            <rect x="21" y="56" width="9" height="3" rx="1.5" transform="rotate(-55 25 57)" />
+        <g stroke="currentColor" strokeLinejoin="round" strokeLinecap="round" fillRule="evenodd">
+          <path d={disc(42) + hole(12.5)} fill="#F4D49E" strokeWidth="2.8" />
+          <path d={icing + hole(12.5)} fill="#FFF4DC" strokeWidth="2.4" />
+          <g strokeWidth="2.4">
+            {sprinkles.map(([x, y, a]) => (
+              <line key={`${x}${y}`} x1={x - 3} y1={y} x2={x + 3} y2={y} transform={`rotate(${a} ${x} ${y})`} />
+            ))}
           </g>
-        </>
+        </g>
       ) : (
-        <path className="ring" d={ring(45, 14)} fill="none" stroke="currentColor" strokeOpacity="0.28" strokeWidth="2.5" strokeDasharray="5 5" />
+        <g className="ring" fill="none" stroke="currentColor" strokeOpacity="0.42" strokeWidth="2.4" strokeLinecap="round" strokeDasharray="0.1 6.2">
+          <circle cx="50" cy="50" r="41" />
+          <circle cx="50" cy="50" r="12.5" />
+        </g>
       )}
     </svg>
   );
+}
+
+/** The O! Donut wordmark from the brand illustration, drawn in the current text colour. Falls back
+ *  to plain text if the shop renames itself in Settings. */
+export function Wordmark({ name, height = 22 }: { name: string; height?: number }) {
+  if (name.replace(/\s+/g, '').toLowerCase() !== 'o!donut') return <span className="wordmark-text">{name}</span>;
+  return <span className="wordmark" role="img" aria-label={name} style={{ height, width: Math.round(height * 6.5) }} />;
 }
 
 export function StampGrid({ stamps, required }: { stamps: number; required: number }) {

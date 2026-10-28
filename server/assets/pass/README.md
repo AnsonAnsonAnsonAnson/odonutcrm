@@ -5,3 +5,6 @@ Optional brand art for the wallet pass. Any file here replaces the generated def
 - `stamp-on.png` / `stamp-off.png`: square artwork for a collected / empty stamp (e.g. a pink donut and a grey donut)
 
 Restart the app after changing files. Every pass picks up the new art the next time it refreshes.
+
+Without these files the pass uses the O! Donut brand art: the wordmark from `../brand/wordmark.png`
+(recoloured to the card's text colour) and hand-drawn line-art donuts in the same colour.

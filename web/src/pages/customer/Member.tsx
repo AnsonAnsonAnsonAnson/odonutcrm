@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, ApiError, fmtDate } from '../../api';
 import { useConfig } from '../../config';
 import { LangButton, useI18n } from '../../i18n';
-import { ErrorText, Modal, Qr, Spinner, StampGrid } from '../../components/ui';
+import { ErrorText, Modal, Qr, Spinner, StampGrid, Wordmark } from '../../components/ui';
 import { WalletButtons } from './AddToWallet';
 import { Rules } from '../../components/Rules';
 import { Icon } from '../../components/icons';
@@ -151,13 +151,12 @@ export default function Member() {
         <button className="avatar" onClick={() => setModal('settings')} aria-label={t('settings')}>
           {me.first_name.slice(0, 1).toUpperCase()}
         </button>
-        <img src="/icon.svg" alt={cfg.brandName} width={56} height={56} className="brand-mark" />
         <LangButton />
       </header>
 
       <section className="card" style={{ background: cfg.backgroundColor, color: cfg.foregroundColor }}>
         <div className="card-top">
-          <span><small>{cfg.brandName}</small>{cfg.programName}</span>
+          <span className="card-brand"><Wordmark name={cfg.brandName} height={20} /><small>{cfg.programName}</small></span>
           <button className="qr-btn" onClick={() => setModal('card')} aria-label="Show my QR code">
             <Icon name="qr" size={22} />
           </button>
@@ -242,6 +241,7 @@ export default function Member() {
       <ErrorText error={modal ? null : error} />
 
       <footer className="footer">{t('poweredBy')}</footer>
+      <div className="band" role="img" aria-label="" />
 
       <Modal open={modal === 'card'} onClose={() => setModal(null)}>
         <div className="center">

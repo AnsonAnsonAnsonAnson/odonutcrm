@@ -38,6 +38,8 @@ async function call(method: string, url: string, opts: { cookie?: string; body?:
   });
 }
 
+// Each member needs their own mobile number (one account per number).
+let nextPhone = 91234567;
 async function signUp(email: string, extra: Record<string, unknown> = {}) {
   let r = await call('POST', '/api/auth/otp', { body: { email } });
   assert.equal(r.statusCode, 200, r.body);
@@ -51,7 +53,7 @@ async function signUp(email: string, extra: Record<string, unknown> = {}) {
     body: {
       firstName: 'Test',
       lastName: email.split('@')[0],
-      phone: '+852 9123 4567',
+      phone: `+852 ${nextPhone++}`,
       birthday: '1999-05-20',
       gender: 'undisclosed',
       marketingOptIn: true,
@@ -68,6 +70,8 @@ before(async () => {
   await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(db, () => {});
   await seed(db, { adminEmail: 'owner@example.com', adminPassword: 'correct horse battery', log: () => {} });
+  // These tests use the classic one-stamp-per-visit rules; rewards.test.ts covers the shop's own rules.
+  await db.query('UPDATE program SET signup_stamps = 0, reward_voucher_count = 1, verify_phone_at_signup = false');
   cfg = loadConfig({
     APP_SECRET: 'x'.repeat(40),
     PUBLIC_URL: 'https://loyalty.example.com',
@@ -113,7 +117,7 @@ test('customer signs up with an email code and gets a card plus welcome voucher'
   aliceSerial = me.serial_number;
   aliceAuth = (await db.query('SELECT auth_token FROM cards WHERE serial_number = $1', [aliceSerial])).rows[0].auth_token;
   const vouchers = (await call('GET', '/api/me/vouchers', { cookie: alice })).json();
-  assert.equal(vouchers[0].title, 'Free Topping');
+  assert.equal(vouchers[0].title, 'Free Cream Cheese Donut');
 });
 
 test('wrong codes are rejected and returning members sign straight in', async () => {
@@ -163,7 +167,7 @@ test('completing the card issues the reward voucher and rolls extra stamps over'
   assert.equal(r.statusCode, 200, r.body);
   assert.equal(r.json().stamps, 1);
   assert.equal(r.json().rewards.length, 1);
-  assert.equal(r.json().rewards[0].title, 'Free Donut');
+  assert.equal(r.json().rewards[0].title, '2 Free Donuts');
   const me = (await call('GET', '/api/me', { cookie: alice })).json();
   assert.equal(me.rewards_earned, 1);
   assert.equal(me.lifetime_stamps, 11);
@@ -175,7 +179,7 @@ test('completing the card issues the reward voucher and rolls extra stamps over'
 
 test('vouchers redeem once at the counter', async () => {
   const vouchers = (await call('GET', '/api/me/vouchers', { cookie: alice })).json();
-  const reward = vouchers.find((v: any) => v.title === 'Free Donut');
+  const reward = vouchers.find((v: any) => v.title === '2 Free Donuts');
   let r = await call('POST', '/api/staff/scan', { cookie: staffCookie, body: { code: reward.code } });
   assert.equal(r.json().type, 'voucher');
   r = await call('POST', '/api/staff/redeem', { cookie: staffCookie, body: { code: reward.code } });

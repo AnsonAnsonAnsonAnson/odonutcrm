@@ -13,13 +13,16 @@ export default function Poster() {
   const [program, setProgram] = useState<any>(null);
   const [promo, setPromo] = useState('');
   const [headline, setHeadline] = useState('Join the Donut Club');
-  const [sub, setSub] = useState('Scan, add the card to your phone and collect a stamp with every donut.');
+  const [sub, setSub] = useState('Scan, add the card to your phone and start collecting stamps. Your first stamp is on us!');
   useEffect(() => {
     api('/api/admin/promos').then((p) => setPromos(p.filter((x: any) => x.active)));
     api('/api/admin/program').then((r) => setProgram(r.program));
   }, []);
   const url = `${location.origin}/${promo ? `?promo=${encodeURIComponent(promo)}` : ''}`;
   const reward = me.program.stamps_required;
+  const per = Number(me.program.spend_per_stamp) || 0;
+  const earn = per > 0 ? `$${per} = 1 stamp · ` : '';
+  const prize = program?.reward_summary ?? 'a free treat';
   const colors = { background: me.program.background_color, color: me.program.foreground_color };
 
   const panel = (
@@ -28,7 +31,7 @@ export default function Poster() {
       <h2>{headline}</h2>
       <p>{sub}</p>
       <div className="poster-qr"><Qr value={url} size={220} /></div>
-      <p className="poster-reward">{reward} stamps = a free treat{promo && ' · plus a welcome gift'}</p>
+      <p className="poster-reward">{earn}{reward} stamps = {prize}{promo && ' · plus a welcome gift'}</p>
       <small>{url.replace(/^https?:\/\//, '')}</small>
     </>
   );
@@ -67,7 +70,7 @@ export default function Poster() {
           <p>{sub}</p>
           <div className="poster-qr"><Qr value={url} size={300} /></div>
           <p className="poster-steps">1 Scan · 2 Sign up · 3 Add to Apple or Google Wallet</p>
-          <p className="poster-reward">{reward} stamps = a free treat{promo && ' · plus a welcome gift today'}</p>
+          <p className="poster-reward">{earn}{reward} stamps = {prize}{promo && ' · plus a welcome gift today'}</p>
           <small>{url.replace(/^https?:\/\//, '')}</small>
         </section>
       )}
@@ -87,7 +90,7 @@ export default function Poster() {
           <ol>
             <li>Ask: <b>"Are you an {me.program.brand_name} Club member?"</b></li>
             <li><b>Member:</b> scan the QR on their wallet card or phone. No phone? Search their mobile number.</li>
-            <li>Set the number of qualifying items, then tap <b>Add stamps</b>. Check the screen shows the new total.</li>
+            <li>{per > 0 ? <>Type the bill total; the screen works out the stamps (${per} each, rounded down). Tap <b>Add stamps</b>.</> : <>Set the number of qualifying items, then tap <b>Add stamps</b>.</>} Check the screen shows the new total.</li>
             <li><b>Not a member:</b> point at the poster. "Scan, it takes 30 seconds, and you get a free topping today." Stamp their first purchase once they have joined.</li>
           </ol>
           <h3>Using a reward</h3>
@@ -98,10 +101,10 @@ export default function Poster() {
           </ol>
           <h3>Rules</h3>
           <ul>
-            <li>One stamp per qualifying item. At most {me.program.max_stamps_per_scan} per scan{program?.stamp_cooldown_seconds ? `; the same card cannot be stamped again for ${program.stamp_cooldown_seconds} seconds` : ''}.</li>
+            <li>{per > 0 ? `One stamp for every $${per} on one bill.` : 'One stamp per qualifying item.'} At most {me.program.max_stamps_per_scan} per scan{program?.stamp_cooldown_seconds ? `; the same card cannot be stamped again for ${program.stamp_cooldown_seconds} seconds` : ''}.</li>
             <li>Never stamp without a purchase. Every stamp records who added it and when.</li>
             <li>Mistake? Tell a manager; they fix it in Admin → Members → Adjust stamps with a reason.</li>
-            {program?.stamp_multiplier > 1 && <li>While "{program.multiplier_label}" is on, add the real number of items: the bonus is added automatically.</li>}
+            {program?.stamp_multiplier > 1 && <li>While "{program.multiplier_label}" is on, add the real {per > 0 ? 'bill total' : 'number of items'}: the bonus is added automatically.</li>}
           </ul>
           <h3>Common questions</h3>
           <ul>

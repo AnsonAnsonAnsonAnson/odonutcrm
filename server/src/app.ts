@@ -20,6 +20,7 @@ import { staffRoutes } from './routes/staff.js';
 import { securityRoutes } from './routes/security.js';
 import { audit } from './lib/security.js';
 import { adminRoutes } from './routes/admin.js';
+import { defaultGoogleKeys, type GoogleKeys } from './lib/google.js';
 
 export interface Services {
   cfg: Config;
@@ -28,6 +29,8 @@ export interface Services {
   mailer: Mailer;
   sms: SmsSender;
   notifier: Notifier;
+  /** Google's public keys for checking "Sign in with Google" tokens (tests pass their own). */
+  googleKeys: GoogleKeys;
   log: (m: string) => void;
 }
 
@@ -40,7 +43,7 @@ declare module 'fastify' {
 export async function buildApp(
   cfg: Config,
   db: Db,
-  opts: { logger?: boolean; mailer?: Mailer; sms?: SmsSender } = {},
+  opts: { logger?: boolean; mailer?: Mailer; sms?: SmsSender; googleKeys?: GoogleKeys } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: opts.logger ?? true,
@@ -57,6 +60,7 @@ export async function buildApp(
     mailer: opts.mailer ?? createMailer(cfg, log),
     sms: opts.sms ?? createSms(cfg, log),
     notifier: new Notifier(db, cfg, log),
+    googleKeys: opts.googleKeys ?? defaultGoogleKeys(),
     log,
   };
   app.decorate('svc', svc);
@@ -74,12 +78,14 @@ export async function buildApp(
   const https = cfg.publicUrl.startsWith('https://');
   const csp = [
     "default-src 'self'",
-    "script-src 'self'",
+    // Google's sign-in button is the only outside script, frame and style the site loads.
+    "script-src 'self' https://accounts.google.com/gsi/client",
     // React sets some styles inline (colours from the program settings).
-    "style-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
+    "frame-src https://accounts.google.com/gsi/",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    "connect-src 'self'",
+    "connect-src 'self' https://accounts.google.com/gsi/",
     "media-src 'self' blob:",
     "worker-src 'self'",
     "manifest-src 'self'",
@@ -95,7 +101,8 @@ export async function buildApp(
     reply.header('referrer-policy', 'strict-origin-when-cross-origin');
     reply.header('x-frame-options', 'DENY');
     reply.header('content-security-policy', csp);
-    reply.header('cross-origin-opener-policy', 'same-origin');
+    // Google's sign-in pop-up must be able to answer the page that opened it.
+    reply.header('cross-origin-opener-policy', 'same-origin-allow-popups');
     reply.header('cross-origin-resource-policy', 'same-site');
     // The staff counter needs the camera; nothing needs the microphone, location or payments.
     reply.header('permissions-policy', 'camera=(self), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()');

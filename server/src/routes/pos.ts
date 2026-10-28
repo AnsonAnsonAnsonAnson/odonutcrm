@@ -97,7 +97,9 @@ export async function posRoutes(app: FastifyInstance) {
     const b = z
       .object({
         member: memberRef,
-        count: z.number().int().min(1).max(20).default(1),
+        count: z.number().int().min(1).max(20).optional(),
+        // Order total in dollars; stamps are worked out from it when no count is given.
+        amount: z.number().min(0).max(100000).optional(),
         orderId: z.string().trim().min(1).max(80),
         note: z.string().max(200).optional(),
       })
@@ -105,7 +107,8 @@ export async function posRoutes(app: FastifyInstance) {
     const customerId = await resolveMember(svc, b.member);
     const r = await addStamps(svc.db, {
       customerId,
-      count: b.count,
+      count: b.count ?? (b.amount === undefined ? 1 : undefined),
+      amount: b.amount,
       reason: 'purchase',
       staffId: null,
       storeId: key.store_id,

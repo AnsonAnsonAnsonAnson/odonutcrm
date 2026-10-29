@@ -28,6 +28,8 @@ const schema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+  // Where member replies go, e.g. a Gmail inbox the shop reads. Optional.
+  SMTP_REPLY_TO: z.string().optional(),
 
   // Apple Wallet. Provide either *_FILE paths or base64 *_B64 values.
   APPLE_PASS_TYPE_ID: z.string().optional(),
@@ -154,7 +156,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       : null;
 
   const smtp = c.SMTP_HOST
-    ? { host: c.SMTP_HOST.trim(), port: c.SMTP_PORT, user: c.SMTP_USER?.trim(), pass: c.SMTP_PASS?.replace(/\s+/g, ''), from: senderAddress(c.SMTP_FROM, c.SMTP_USER) }
+    ? { host: c.SMTP_HOST.trim(), port: c.SMTP_PORT, user: c.SMTP_USER?.trim(), pass: c.SMTP_PASS?.replace(/\s+/g, ''), from: senderAddress(c.SMTP_FROM, c.SMTP_USER), replyTo: EMAIL.exec(c.SMTP_REPLY_TO ?? '')?.[0] }
     : null;
 
   return {

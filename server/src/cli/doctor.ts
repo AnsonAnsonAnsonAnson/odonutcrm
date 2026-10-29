@@ -11,6 +11,7 @@ import { createPool, one } from '../db.js';
 import { syncStoredCredentials } from '../services/apple/credentials.js';
 import { checkAppleCert } from '../lib/certs.js';
 import { verifyPassword } from '../lib/crypto.js';
+import { senderDomainChecks } from '../lib/mailer.js';
 
 type Level = 'ok' | 'warn' | 'fail';
 const results: { level: Level; area: string; msg: string }[] = [];
@@ -134,6 +135,7 @@ async function main() {
     } catch (e: any) {
       add('fail', 'Email', `SMTP login to ${cfg.smtp.host} failed: ${e.message}`);
     }
+    for (const r of await senderDomainChecks(cfg.smtp.from)) add(r.level, 'Email', r.msg);
   }
 
   // Web push and SMS

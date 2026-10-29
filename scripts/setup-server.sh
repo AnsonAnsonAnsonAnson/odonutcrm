@@ -69,6 +69,8 @@ if ! grep -qE '^SMTP_HOST=.+' .env; then
     set_env SMTP_PASS "$(printf '%s' "$GPASS" | tr -d '[:space:]')"
     set_env SMTP_FROM "O! Donut <$GMAIL>"
     echo "✓ Email set up. After signing in, use Program & automations → Send a test email to check it."
+    echo "  Emails from a personal Gmail address can land in junk. To send from your own domain later:"
+    echo "  sudo bash scripts/email.sh (guide: docs/09-email-delivery.md)"
   fi
 fi
 

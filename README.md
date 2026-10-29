@@ -20,6 +20,7 @@ A self-hosted loyalty system in the style of Wanpo's Juicysuite member club: cus
 6. [Go-live checklist](docs/06-go-live-checklist.md)
 7. [Test run on Netlify](docs/07-netlify-test.md) (no longer used: the club is self-hosted)
 8. [Security: Amazon Lightsail + Cloudflare](docs/08-security.md), step by step
+9. [Keeping club emails out of junk](docs/09-email-delivery.md): own-domain sender, SPF, DKIM, DMARC
 
 ## Deploy (production)
 

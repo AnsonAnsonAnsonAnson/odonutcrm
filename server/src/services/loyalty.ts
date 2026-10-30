@@ -454,6 +454,12 @@ export async function applyPromoCode(db: Db, customerId: string, rawCode: string
     if (!promo || !promo.active || (promo.starts_at && promo.starts_at > now)) throw new HttpError(404, 'That promo code is not valid');
     if (promo.ends_at && promo.ends_at < now) throw new HttpError(410, 'That promo code has ended');
     if (promo.max_uses !== null && promo.uses >= promo.max_uses) throw new HttpError(410, 'That promo code has been fully claimed');
+    // A code that gives the welcome gift must not give it a second time to someone who already had it.
+    const program = await getProgram(tx);
+    if (promo.template_id === program.welcome_template_id) {
+      const had = await one(tx, `SELECT 1 FROM vouchers WHERE customer_id = $1 AND template_id = $2`, [customerId, promo.template_id]);
+      if (had) throw new HttpError(409, 'You already got this as your welcome gift', 'already_welcomed');
+    }
     const v = await issueVoucher(tx, customerId, promo.template_id, 'promo', promo.id);
     if (!v) throw new HttpError(409, 'You have already used this promo code');
     await tx.query('UPDATE promo_codes SET uses = uses + 1 WHERE id = $1', [promo.id]);

@@ -84,7 +84,6 @@ Dockerfile, docker-compose.yml, .env.example
 - Birthday → **Birthday Donut** (30 days)
 - No visit for 30 days → **$5 Cash Voucher** (14 days), once per lapse, opted-in members only
 - Friend's first purchase → **Friend Reward: Free Donut** for the referrer
-- Promo code `HELLODONUT` → Free Topping (500 uses)
 - Max 5 stamps per scan, 60 seconds between purchase stamps
 - Tiers (stamps in the last 365 days): **Sprinkle** 0, **Glazed** 20 (Glazed Member Treat), **Golden** 50 (Golden Member Box)
 - 1 to 2 stamps from a reward and no visit for 7 days → "almost there" nudge

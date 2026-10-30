@@ -275,3 +275,14 @@ test('29 February birthdays get their treat on 28 February in other years', asyn
   }
   assert.ok((await vouchers(m.cookie)).some((v) => v.source === 'birthday'));
 });
+
+test('no second cream cheese donut from a promo code: HELLODONUT is gone, and welcome-gift codes skip members who had it', async () => {
+  const m = await signUp('promo@example.com');
+  let r = await call('POST', '/api/me/promo', { cookie: m.cookie, body: { code: 'HELLODONUT' } });
+  assert.equal(r.statusCode, 404);
+  // Even if the owner makes a new code for the welcome donut, a member who already got it can't get it again.
+  await db.query(`INSERT INTO promo_codes (code, template_id) SELECT 'WELCOMEAGAIN', welcome_template_id FROM program`);
+  r = await call('POST', '/api/me/promo', { cookie: m.cookie, body: { code: 'WELCOMEAGAIN' } });
+  assert.equal(r.statusCode, 409);
+  assert.equal((await vouchers(m.cookie)).filter((v) => v.title === 'Free Cream Cheese Donut').length, 1);
+});

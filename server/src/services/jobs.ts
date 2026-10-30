@@ -15,6 +15,8 @@ function localNow(cfg: Config) {
   return { date: d.toISOString().slice(0, 10), year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate(), hour: d.getUTCHours() };
 }
 
+const isLeapYear = (y: number) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+
 async function once(db: Db, job: string, key: string): Promise<boolean> {
   const r = await db.query('INSERT INTO job_runs (job, run_key) VALUES ($1,$2) ON CONFLICT DO NOTHING', [job, key]);
   return r.rowCount === 1;
@@ -27,9 +29,12 @@ export async function runBirthdays(db: Db, cfg: Config, notifier: Notifier, log:
   const people = await many<{ id: string }>(
     db,
     `SELECT id FROM customers
-      WHERE birthday IS NOT NULL AND extract(month FROM birthday) = $1 AND extract(day FROM birthday) = $2
+      WHERE birthday IS NOT NULL
+        AND (extract(month FROM birthday) = $1 AND extract(day FROM birthday) = $2
+             -- 29 February birthdays get their treat on the 28th in other years.
+             OR ($4 AND extract(month FROM birthday) = 2 AND extract(day FROM birthday) = 29))
         AND (last_birthday_reward_year IS NULL OR last_birthday_reward_year < $3)`,
-    [t.month, t.day, t.year],
+    [t.month, t.day, t.year, t.month === 2 && t.day === 28 && !isLeapYear(t.year)],
   );
   for (const p of people) {
     const claimed = await one(db, `UPDATE customers SET last_birthday_reward_year = $2 WHERE id = $1 AND (last_birthday_reward_year IS NULL OR last_birthday_reward_year < $2) RETURNING id`, [p.id, t.year]);

@@ -189,9 +189,10 @@ test('vouchers redeem once at the counter', async () => {
 });
 
 test('promo codes work once per member', async () => {
-  let r = await call('POST', '/api/me/promo', { cookie: alice, body: { code: 'hellodonut' } });
+  await db.query(`INSERT INTO promo_codes (code, template_id) SELECT 'SPRINKLES', birthday_template_id FROM program`);
+  let r = await call('POST', '/api/me/promo', { cookie: alice, body: { code: 'sprinkles' } });
   assert.equal(r.statusCode, 200, r.body);
-  r = await call('POST', '/api/me/promo', { cookie: alice, body: { code: 'HELLODONUT' } });
+  r = await call('POST', '/api/me/promo', { cookie: alice, body: { code: 'SPRINKLES' } });
   assert.equal(r.statusCode, 409);
   r = await call('POST', '/api/me/promo', { cookie: alice, body: { code: 'NOPE' } });
   assert.equal(r.statusCode, 404);

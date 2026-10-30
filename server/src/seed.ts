@@ -31,11 +31,7 @@ export async function seed(db: Db, opts: { adminEmail?: string; adminPassword?: 
         ],
       );
       await tx.query(`INSERT INTO stores (name, address) VALUES ('O! Donut Flagship', 'Hong Kong')`);
-      await tx.query(
-        `INSERT INTO promo_codes (code, template_id, max_uses) VALUES ('HELLODONUT', $1, 500)`,
-        [welcome],
-      );
-      log('seeded program, voucher templates, store and promo code HELLODONUT');
+      log('seeded program, voucher templates and store');
     }
     const anyStaff = await one(tx, 'SELECT 1 FROM staff_users LIMIT 1');
     if (!anyStaff && opts.adminEmail && opts.adminPassword) {

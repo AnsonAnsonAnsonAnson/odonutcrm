@@ -277,7 +277,7 @@ export default function Member() {
 
       <Modal open={modal === 'promo'} onClose={() => setModal(null)} title={t('promoCode')}>
         <form className="form" onSubmit={applyPromo}>
-          <input value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} placeholder="HELLODONUT" required autoCapitalize="characters" />
+          <input value={promo} onChange={(e) => setPromo(e.target.value.toUpperCase())} placeholder="PROMO CODE" required autoCapitalize="characters" />
           <ErrorText error={error} />
           {promoMsg && <p className="success">{promoMsg}</p>}
           <button className="btn primary" disabled={busy}>{busy ? <Spinner /> : t('apply')}</button>

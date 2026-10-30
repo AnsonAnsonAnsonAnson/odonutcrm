@@ -8,7 +8,7 @@ import { applyPromoCode, createCustomer, customerHistory, customerVouchers } fro
 import { activeMultiplier, getProgram, howItWorks, money } from '../services/program.js';
 import { memberCenterUrl } from '../services/apple/pass.js';
 import { tierProgress } from '../services/tiers.js';
-import { phoneOwner } from '../services/identity.js';
+import { phoneOwner, recordWelcomeClaim } from '../services/identity.js';
 import { verifyGoogleIdToken } from '../lib/google.js';
 
 const SIGNUP_COOKIE = 'od_su';
@@ -394,6 +394,12 @@ Show your card at the counter every visit. ${howItWorks(program)}`,
         WHERE id = $1`,
       [id, b.firstName ?? null, b.lastName ?? null, b.phone?.replace(/\s/g, '') ?? null, b.marketingOptIn ?? null, b.locale ?? null],
     );
+    // The new number counts as having had the welcome gift too, so the old account can't free it
+    // up for a fresh sign-up with another email.
+    if (b.phone) {
+      const me = await one<{ email: string }>(db, 'SELECT email FROM customers WHERE id = $1', [id]);
+      if (me) await recordWelcomeClaim(db, me.email, b.phone);
+    }
     if (b.firstName || b.lastName) {
       await db.query('UPDATE cards SET updated_at = now() WHERE customer_id = $1', [id]);
       void notifier.passChanged(id).catch((err) => log(`wallet refresh failed: ${err.message}`));

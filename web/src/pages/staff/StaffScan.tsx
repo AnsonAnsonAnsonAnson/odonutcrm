@@ -36,16 +36,19 @@ export default function StaffScan() {
   const [flash, setFlash] = useState<string | null>(null);
   const [activity, setActivity] = useState<any[]>([]);
   const [matches, setMatches] = useState<Summary[]>([]);
+  // The last thing done at the counter, so a mistake can be taken back straight away.
+  const [undo, setUndo] = useState<{ kind: 'stamp'; eventId: string } | { kind: 'redeem'; code: string; title: string } | null>(null);
 
   const loadActivity = useCallback(() => api('/api/staff/activity').then(setActivity).catch(() => {}), []);
   useEffect(() => {
     if (me) loadActivity();
   }, [me]);
 
-  const scan = useCallback(async (code: string) => {
+  const scan = useCallback(async (code: string, keepUndo = false) => {
     setError(null);
     setFlash(null);
     setMatches([]);
+    if (!keepUndo) setUndo(null);
     try {
       const r = await api<ScanResult>('/api/staff/scan', { body: { code } });
       setResult(r);
@@ -77,7 +80,7 @@ export default function StaffScan() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api<{ stamps: number; stampsRequired: number; rewards: { title: string }[]; tierUpgrade: string | null; bonus: number; added: number }>('/api/staff/stamp', {
+      const r = await api<{ stamps: number; stampsRequired: number; rewards: { title: string }[]; tierUpgrade: string | null; bonus: number; added: number; eventId: string }>('/api/staff/stamp', {
         body: { cardId: result.customer.card_id, ...(useBill ? { amount: Number(amount) } : { count }), idempotencyKey: newKey() },
       });
       const n = r.added + r.bonus;
@@ -85,8 +88,9 @@ export default function StaffScan() {
         ? `Card complete! ${r.rewards.length > 1 ? `${r.rewards.length} × ` : ''}${r.rewards[0].title} issued. Now ${r.stamps}/${r.stampsRequired}.`
         : `✓ ${n} stamp${n > 1 ? 's' : ''} added${r.bonus ? ` (${r.added} + ${r.bonus} bonus)` : ''}. Now ${r.stamps}/${r.stampsRequired}.`;
       if (r.tierUpgrade) msg += ` Now a ${r.tierUpgrade} member.`;
-      await scan(result.customer.qr_token);
+      await scan(result.customer.qr_token, true);
       setFlash(msg);
+      setUndo({ kind: 'stamp', eventId: r.eventId });
       loadActivity();
     } catch (err) {
       setError((err as ApiError).message);
@@ -95,14 +99,40 @@ export default function StaffScan() {
     }
   }
   async function redeem(code: string, title: string) {
-    if (!confirm(`Redeem "${title}" now? This cannot be undone.`)) return;
+    if (!confirm(`Redeem "${title}" now? Only give the treat once you press OK.`)) return;
     setBusy(true);
     setError(null);
     try {
       await api('/api/staff/redeem', { body: { code } });
       const qr = result!.customer.qr_token;
-      await scan(qr);
+      await scan(qr, true);
       setFlash(`✓ ${title} redeemed`);
+      setUndo({ kind: 'redeem', code, title });
+      loadActivity();
+    } catch (err) {
+      setError((err as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function undoLast() {
+    if (!undo || !result) return;
+    const what = undo.kind === 'stamp' ? 'Take back the stamps you just added?' : `Put "${undo.title}" back on the member's account?`;
+    if (!confirm(what)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      let msg: string;
+      if (undo.kind === 'stamp') {
+        const r = await api<{ removed: number; vouchersVoided: number; stamps: number; stampsRequired: number }>('/api/staff/stamp/undo', { body: { eventId: undo.eventId } });
+        msg = `↩ ${r.removed} stamp${r.removed === 1 ? '' : 's'} taken back${r.vouchersVoided ? ' and the reward cancelled' : ''}. Now ${r.stamps}/${r.stampsRequired}.`;
+      } else {
+        await api('/api/staff/redeem/undo', { body: { code: undo.code } });
+        msg = `↩ ${undo.title} is back on the member's account.`;
+      }
+      await scan(result.customer.qr_token);
+      setFlash(msg);
       loadActivity();
     } catch (err) {
       setError((err as ApiError).message);
@@ -139,7 +169,7 @@ export default function StaffScan() {
 
       <div className="staff-grid">
         <section>
-          <Scanner onResult={scan} paused={busy} />
+          <Scanner onResult={(text) => scan(text)} paused={busy} />
           <form className="row" onSubmit={lookup}>
             <input placeholder="Card / voucher code, phone or email" value={manual} onChange={(e) => setManual(e.target.value)} />
             <button className="btn">Find</button>
@@ -160,6 +190,11 @@ export default function StaffScan() {
         <section className="panel result">
           <ErrorText error={error} />
           {flash && <p className="success big">{flash}</p>}
+          {undo && (
+            <button className="link" disabled={busy} onClick={undoLast}>
+              {undo.kind === 'stamp' ? 'Mistake? Undo these stamps' : 'Mistake? Undo this redemption'}
+            </button>
+          )}
           {!c && !error && <p className="muted">Scan the QR on the member's wallet card or voucher.</p>}
           {c && (
             <>
@@ -222,7 +257,7 @@ export default function StaffScan() {
                   </li>
                 ))}
               </ul>
-              <button className="link" onClick={() => { setResult(null); setFlash(null); }}>Next customer</button>
+              <button className="link" onClick={() => { setResult(null); setFlash(null); setUndo(null); }}>Next customer</button>
             </>
           )}
         </section>

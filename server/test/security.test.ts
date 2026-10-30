@@ -196,7 +196,13 @@ test('two-step sign-in: set up, sign in with a code, backup codes work once, own
 test('the activity log records sign-ins and admin changes without their values', async () => {
   await call('POST', '/api/admin/stores', { cookie: owner, body: { name: 'Kowloon Bay', address: 'Kowloon' } });
   await call('GET', '/api/admin/customers.csv', { cookie: owner });
-  const log = (await call('GET', '/api/admin/activity-log?limit=200', { cookie: owner })).json();
+  // Admin changes are logged after the response is sent, so the last line may land a moment later.
+  let log: any[] = [];
+  for (let i = 0; i < 20; i++) {
+    log = (await call('GET', '/api/admin/activity-log?limit=200', { cookie: owner })).json();
+    if (log.some((l: any) => l.action === 'export customers.csv')) break;
+    await new Promise((res) => setTimeout(res, 25));
+  }
   const actions = log.map((l: any) => l.action);
   for (const a of ['login.ok', 'login.failed', 'login.locked', 'password.changed', 'two_step.enabled', 'POST stores', 'export customers.csv', 'PATCH staff/:id']) {
     assert.ok(actions.includes(a), `${a} logged`);

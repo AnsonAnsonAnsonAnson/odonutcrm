@@ -3,7 +3,7 @@ import { HttpError } from '../lib/auth.js';
 import { randomCode, randomToken } from '../lib/crypto.js';
 import { activeMultiplier, getProgram, money, stampsForAmount, type CardRow } from './program.js';
 import { reevaluateTier, type TierChange } from './tiers.js';
-import { recordWelcomeClaim, welcomeAlreadyClaimed } from './identity.js';
+import { claimWelcome } from './identity.js';
 
 export interface IssuedVoucher {
   id: string;
@@ -93,8 +93,7 @@ export async function createCustomer(tx: Tx, input: NewCustomer) {
     ],
   );
   // Welcome gifts are once per person: not again for a mobile number or inbox that already had them.
-  const welcomeClaimed = await welcomeAlreadyClaimed(tx, input.email, input.phone);
-  await recordWelcomeClaim(tx, input.email, input.phone);
+  const welcomeClaimed = !(await claimWelcome(tx, input.email, input.phone));
   // Welcome stamps start the card off, so a new member is already on their way to the reward.
   const welcomeStamps = welcomeClaimed ? 0 : Math.min(program.signup_stamps, program.stamps_required - 1);
   const card = await one<CardRow>(
@@ -148,6 +147,8 @@ export interface StampResult {
   bonus: number;
   /** Stamps added before any bonus (worked out from the bill when only an amount was given). */
   added: number;
+  /** The stamp entry this created, so the counter can undo a mistake. */
+  eventId: string;
 }
 
 export async function addStamps(db: Db, input: StampInput): Promise<StampResult> {
@@ -185,9 +186,11 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
     if (!card) throw new HttpError(404, 'Card not found');
 
     if (input.idempotencyKey) {
-      const prior = await one(tx, 'SELECT 1 FROM stamp_events WHERE idempotency_key = $1', [input.idempotencyKey]);
+      const prior = await one<{ id: string; card_id: string }>(tx, 'SELECT id, card_id FROM stamp_events WHERE idempotency_key = $1', [input.idempotencyKey]);
       if (prior) {
-        return { duplicate: true, customerId: card.customer_id, card, stampsRequired: program.stamps_required, rewards: [], referrer: null, tier: null, bonus: 0, added: 0 };
+        // A reused order number on a different member's card is a till mistake, not a retry.
+        if (prior.card_id !== card.id) throw new HttpError(409, 'That order was already stamped on another member\'s card', 'order_used');
+        return { duplicate: true, customerId: card.customer_id, card, stampsRequired: program.stamps_required, rewards: [], referrer: null, tier: null, bonus: 0, added: 0, eventId: prior.id };
       }
     }
 
@@ -207,9 +210,10 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
     }
 
     const delta = Math.max(count, -card.stamps);
-    await tx.query(
+    const event = await one<{ id: string }>(
+      tx,
       `INSERT INTO stamp_events (card_id, delta, reason, staff_id, store_id, note, idempotency_key, api_key_id, amount)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [card.id, delta, input.reason, input.staffId, input.storeId, input.note ?? null, input.idempotencyKey ?? null, input.apiKeyId ?? null, input.amount ?? null],
     );
 
@@ -227,7 +231,13 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
 
     let stamps = card.stamps + total;
     const rewards: IssuedVoucher[] = [];
-    while (stamps >= program.stamps_required) {
+    // Only clear a full card when there is a reward to give for it. If the owner switched the
+    // reward voucher off, the stamps stay on the card instead of quietly vanishing.
+    const rewardReady = !!program.reward_template_id &&
+      !!(await one(tx, 'SELECT 1 FROM voucher_templates WHERE id = $1 AND active', [program.reward_template_id]));
+    let completed = 0;
+    while (rewardReady && stamps >= program.stamps_required) {
+      completed++;
       stamps -= program.stamps_required;
       await tx.query(
         `INSERT INTO stamp_events (card_id, delta, reason, staff_id, store_id, note) VALUES ($1,$2,'reward_rollover',$3,$4,'Card completed')`,
@@ -245,7 +255,7 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
       `UPDATE cards SET stamps = $2, lifetime_stamps = lifetime_stamps + GREATEST($3, 0),
               rewards_earned = rewards_earned + $4, updated_at = now()
         WHERE id = $1 RETURNING *`,
-      [card.id, stamps, total, Math.floor((card.stamps + total) / program.stamps_required)],
+      [card.id, stamps, total, completed],
     );
 
     let referrer: StampResult['referrer'] = null;
@@ -265,32 +275,167 @@ export async function addStamps(db: Db, input: StampInput): Promise<StampResult>
 
     const tier = program.tiers_enabled ? await reevaluateTier(tx, card.customer_id, program.tier_window_days) : null;
 
-    return { duplicate: false, customerId: card.customer_id, card: updated!, stampsRequired: program.stamps_required, rewards, referrer, tier, bonus, added: delta };
+    return { duplicate: false, customerId: card.customer_id, card: updated!, stampsRequired: program.stamps_required, rewards, referrer, tier, bonus, added: delta, eventId: event!.id };
   });
 }
 
+/** How long the counter has to undo its own stamp or redemption. After that a manager adjusts by hand. */
+export const UNDO_MINUTES = 10;
+
+const ago = (at: Date) => {
+  const mins = Math.floor((Date.now() - new Date(at).getTime()) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+  return `on ${new Date(at).toISOString().slice(0, 10)}`;
+};
+
 export async function redeemVoucher(db: Db, code: string, staffId: string | null, storeId: string | null, apiKeyId: string | null = null) {
-  return withTx(db, async (tx) => {
-    const v = await one<{ id: string; customer_id: string; status: string; expires_at: Date; title: string }>(
+  const r = await withTx(db, async (tx) => {
+    const v = await one<{ id: string; customer_id: string; status: string; expires_at: Date; redeemed_at: Date | null; store: string | null; title: string }>(
       tx,
-      `SELECT v.id, v.customer_id, v.status, v.expires_at, t.title FROM vouchers v
-         JOIN voucher_templates t ON t.id = v.template_id
+      `SELECT v.id, v.customer_id, v.status, v.expires_at, v.redeemed_at, s.name AS store, t.title FROM vouchers v
+         JOIN voucher_templates t ON t.id = v.template_id LEFT JOIN stores s ON s.id = v.redeemed_store_id
         WHERE v.code = $1 FOR UPDATE OF v`,
       [code.trim().toUpperCase()],
     );
     if (!v) throw new HttpError(404, 'Voucher not found');
-    if (v.status === 'redeemed') throw new HttpError(409, 'Voucher already used', 'already_redeemed');
+    if (v.status === 'redeemed') {
+      // Say when, so staff can tell a double tap from a member trying the same voucher twice.
+      const where = v.store ? ` at ${v.store}` : '';
+      throw new HttpError(409, `This voucher was already used ${v.redeemed_at ? ago(v.redeemed_at) : ''}${where}`.replace(/\s+$/, ''), 'already_redeemed');
+    }
     if (v.status !== 'active') throw new HttpError(409, `Voucher is ${v.status}`, v.status);
     if (new Date(v.expires_at) < new Date()) {
+      // Saved before refusing (a throw here would roll the change back).
       await tx.query(`UPDATE vouchers SET status = 'expired' WHERE id = $1`, [v.id]);
-      throw new HttpError(409, 'Voucher has expired', 'expired');
+      return { expired: true as const, customerId: v.customer_id };
     }
     await tx.query(
       `UPDATE vouchers SET status = 'redeemed', redeemed_at = now(), redeemed_by = $2, redeemed_store_id = $3, redeemed_api_key_id = $4 WHERE id = $1`,
       [v.id, staffId, storeId, apiKeyId],
     );
     await tx.query('UPDATE cards SET updated_at = now() WHERE customer_id = $1', [v.customer_id]);
-    return { voucherId: v.id, customerId: v.customer_id, title: v.title };
+    return { expired: false as const, voucherId: v.id, customerId: v.customer_id, title: v.title };
+  });
+  if (r.expired) throw new HttpError(409, 'Voucher has expired', 'expired');
+  return r;
+}
+
+export interface UndoBy {
+  staffId: string;
+  /** Managers and the owner can undo what anyone at the counter did. */
+  isManager: boolean;
+}
+
+/**
+ * Takes back a purchase stamp added by mistake (wrong member, wrong bill), within UNDO_MINUTES.
+ * Removes everything that stamp caused: the stamps, any double-stamp bonus, a completed card and
+ * its reward voucher, a referral thank-you, a tier gift, and the visit and spend it counted.
+ * Refused once a reward it caused has been used, or once the card has been stamped again since.
+ */
+export async function undoStamp(db: Db, eventId: string, by: UndoBy) {
+  return withTx(db, async (tx) => {
+    // Lock the card first, then read the stamp, so two taps on Undo can't both go through.
+    const card = await one<CardRow>(
+      tx,
+      'SELECT * FROM cards WHERE id = (SELECT card_id FROM stamp_events WHERE id = $1) FOR UPDATE',
+      [eventId],
+    );
+    const ev =
+      card &&
+      (await one<{ staff_id: string | null; amount: string | null; recent: boolean }>(
+        tx,
+        `SELECT staff_id, amount, created_at > now() - make_interval(mins => $2) AS recent
+           FROM stamp_events WHERE id = $1 AND reason = 'purchase'`,
+        [eventId, UNDO_MINUTES],
+      ));
+    if (!card || !ev) throw new HttpError(404, 'Nothing to undo: those stamps were already removed', 'not_found');
+    if (!by.isManager && ev.staff_id !== by.staffId) {
+      throw new HttpError(403, 'Only the person who added these stamps, or a manager, can undo them');
+    }
+    if (!ev.recent) {
+      throw new HttpError(409, `Stamps can only be undone within ${UNDO_MINUTES} minutes. Ask a manager to adjust the card.`, 'too_late');
+    }
+    // Timestamps are compared inside the database: JavaScript dates would drop the microseconds.
+    const at = '(SELECT created_at FROM stamp_events WHERE id = $2)';
+    const later = await one(tx, `SELECT 1 FROM stamp_events WHERE card_id = $1 AND created_at > ${at}`, [card.id, eventId]);
+    if (later) throw new HttpError(409, 'This card was stamped again after that. Ask a manager to adjust the card.', 'stamped_since');
+
+    // Everything one stamping wrote shares its transaction time (Postgres now()), so it can be found together.
+    const rows = await many<{ id: string; delta: number; reason: string }>(
+      tx,
+      `SELECT id, delta, reason FROM stamp_events WHERE card_id = $1 AND created_at = ${at}`,
+      [card.id, eventId],
+    );
+    const vouchers = await many<{ id: string; customer_id: string; status: string }>(
+      tx,
+      `SELECT id, customer_id, status FROM vouchers
+        WHERE created_at = ${at} AND (customer_id = $1 OR (source = 'referral' AND source_ref = $1))
+        FOR UPDATE`,
+      [card.customer_id, eventId],
+    );
+    if (vouchers.some((v) => v.status === 'redeemed')) {
+      throw new HttpError(409, 'The reward from this visit has already been used, so it can\'t be undone. Ask a manager.', 'reward_used');
+    }
+
+    const program = await getProgram(tx);
+    const net = rows.reduce((n, r) => n + r.delta, 0);
+    const given = rows.filter((r) => r.reason !== 'reward_rollover').reduce((n, r) => n + r.delta, 0);
+    const completed = rows.filter((r) => r.reason === 'reward_rollover').length;
+    await tx.query('DELETE FROM stamp_events WHERE id = ANY($1)', [rows.map((r) => r.id)]);
+    if (vouchers.length) await tx.query(`UPDATE vouchers SET status = 'void' WHERE id = ANY($1)`, [vouchers.map((v) => v.id)]);
+    const updated = await one<CardRow>(
+      tx,
+      `UPDATE cards SET stamps = $2, lifetime_stamps = greatest(lifetime_stamps - $3, 0),
+              rewards_earned = greatest(rewards_earned - $4, 0), updated_at = now()
+        WHERE id = $1 RETURNING *`,
+      [card.id, card.stamps - net, Math.max(given, 0), completed],
+    );
+    await tx.query(
+      `UPDATE customers SET visit_count = greatest(visit_count - 1, 0), total_spend = greatest(total_spend - $2, 0),
+              last_visit_at = (SELECT max(created_at) FROM stamp_events WHERE card_id = $3 AND reason = 'purchase')
+        WHERE id = $1`,
+      [card.customer_id, Number(ev.amount ?? 0), card.id],
+    );
+    if (program.tiers_enabled) await reevaluateTier(tx, card.customer_id, program.tier_window_days);
+    const others = [...new Set(vouchers.map((v) => v.customer_id).filter((id) => id !== card.customer_id))];
+    for (const id of others) await tx.query('UPDATE cards SET updated_at = now() WHERE customer_id = $1', [id]);
+    return {
+      customerId: card.customer_id,
+      removed: given,
+      vouchersVoided: vouchers.length,
+      card: updated!,
+      stampsRequired: program.stamps_required,
+      /** Other members whose wallet changed (a referrer whose thank-you was taken back). */
+      alsoChanged: others,
+    };
+  });
+}
+
+/** Puts back a voucher that was redeemed by mistake, within UNDO_MINUTES. */
+export async function undoRedeem(db: Db, code: string, by: UndoBy) {
+  return withTx(db, async (tx) => {
+    const v = await one<{ id: string; customer_id: string; status: string; redeemed_by: string | null; recent: boolean; title: string }>(
+      tx,
+      `SELECT v.id, v.customer_id, v.status, v.redeemed_by, t.title,
+              coalesce(v.redeemed_at > now() - make_interval(mins => $2), false) AS recent
+         FROM vouchers v JOIN voucher_templates t ON t.id = v.template_id
+        WHERE v.code = $1 FOR UPDATE OF v`,
+      [code.trim().toUpperCase(), UNDO_MINUTES],
+    );
+    if (!v) throw new HttpError(404, 'Voucher not found');
+    if (v.status !== 'redeemed') throw new HttpError(409, 'This voucher has not been used', 'not_redeemed');
+    if (!by.isManager && v.redeemed_by !== by.staffId) {
+      throw new HttpError(403, 'Only the person who redeemed this voucher, or a manager, can undo it');
+    }
+    if (!v.recent) throw new HttpError(409, `A voucher can only be put back within ${UNDO_MINUTES} minutes of using it.`, 'too_late');
+    await tx.query(
+      `UPDATE vouchers SET status = 'active', redeemed_at = NULL, redeemed_by = NULL, redeemed_store_id = NULL, redeemed_api_key_id = NULL
+        WHERE id = $1`,
+      [v.id],
+    );
+    await tx.query('UPDATE cards SET updated_at = now() WHERE customer_id = $1', [v.customer_id]);
+    return { customerId: v.customer_id, title: v.title };
   });
 }
 

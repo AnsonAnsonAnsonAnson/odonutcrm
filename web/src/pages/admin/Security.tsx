@@ -373,6 +373,8 @@ function describe(a: { action: string; details: any }): { text: string; tone?: '
     case 'two_step.enabled': return { text: 'Turned on two-step sign-in' };
     case 'two_step.disabled': return { text: 'Turned off two-step sign-in', tone: 'warn' };
     case 'two_step.backup_codes': return { text: 'Made new backup codes' };
+    case 'stamp.undo': return { text: `Undid ${a.details?.removed ?? ''} stamp${a.details?.removed === 1 ? '' : 's'} added by mistake${a.details?.vouchersVoided ? ' (and the reward it gave)' : ''}`, tone: 'warn' };
+    case 'voucher.unredeem': return { text: `Put back voucher ${a.details?.code ?? ''} redeemed by mistake`, tone: 'warn' };
   }
   if (a.action.startsWith('export ')) return { text: 'Downloaded the member list (CSV)', tone: 'warn' };
   const [method, route] = a.action.split(' ');

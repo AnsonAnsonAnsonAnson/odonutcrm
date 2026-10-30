@@ -24,7 +24,7 @@ The screen shows the member's tier (Sprinkle, Glazed, Golden). If it says **Now 
 
 1. The customer opens **My Vouchers** in their Member Center and shows the voucher QR.
 2. Scan it. The screen shows the voucher, who it belongs to and its expiry.
-3. Tap **Redeem**, then hand over the item. A voucher works once; the system refuses used or expired ones.
+3. Tap **Redeem**, then hand over the item. A voucher works once; the system refuses used or expired ones and says when a used one was redeemed.
 4. Do not redeem from a screenshot sent by someone else, or from a code read out loud without typing it in.
 
 ## Rules
@@ -34,7 +34,7 @@ The screen shows the member's tier (Sprinkle, Glazed, Golden). If it says **Now 
 - **A full card (10 stamps)** gives one **2 Free Donuts** voucher. Hand over both donuts together; the voucher works once.
 - **Never stamp without a purchase.** Every stamp records your name, the shop and the time.
 - During a **bonus stamps** promotion the counter screen shows a yellow strip. Type the real bill total; the bonus is added automatically.
-- **Mistakes:** tell a manager. Managers fix them in **Admin → Members → (member) → Adjust stamps** with a reason.
+- **Mistakes (wrong member, wrong bill, wrong voucher):** tap **Mistake? Undo** under the green message straight away. You have 10 minutes, and you can undo only what you did yourself. Undoing a stamp also cancels the free-donut voucher it gave, unless that voucher was already used. After 10 minutes, or if the card was stamped again since, tell a manager: they fix it in **Admin → Members → (member) → Adjust stamps** with a reason. Every undo is listed in **Admin → Security → Activity**.
 - If the same card was just stamped, the screen asks you to wait a moment. This stops accidental double taps.
 
 ## Questions customers ask

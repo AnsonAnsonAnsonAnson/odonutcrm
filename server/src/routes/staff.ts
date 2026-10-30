@@ -5,7 +5,7 @@ import { HttpError, STAFF_COOKIE, STAFF_PENDING_COOKIE, hasRole, type StaffRole,
 import { audit } from '../lib/security.js';
 import { LOCK_AFTER, LOGIN_COLS, DUMMY_HASH, assertNotLocked, checkSecondFactor, type LoginRow } from '../services/staffSecurity.js';
 import { verifyPassword } from '../lib/crypto.js';
-import { addStamps, redeemVoucher, type StampResult } from '../services/loyalty.js';
+import { addStamps, redeemVoucher, undoRedeem, undoStamp, type StampResult } from '../services/loyalty.js';
 import { activeMultiplier, getProgram } from '../services/program.js';
 import type { Services } from '../app.js';
 
@@ -266,13 +266,34 @@ export async function staffRoutes(app: FastifyInstance) {
       tierUpgrade: r.tier?.upgraded && r.tier.to ? r.tier.to.name : null,
       bonus: r.bonus,
       added: r.duplicate ? 0 : r.added,
+      eventId: r.eventId,
     };
+  });
+
+  // A mistake at the counter (wrong member, wrong bill): take the stamps back within a few minutes.
+  app.post('/stamp/undo', async (req) => {
+    const s = await staff(req);
+    const { eventId } = z.object({ eventId: z.string().uuid() }).parse(req.body);
+    const r = await undoStamp(db, eventId, { staffId: s.id, isManager: hasRole(s, 'manager') });
+    await audit(db, req, { staffId: s.id, action: 'stamp.undo', target: r.customerId, details: { removed: r.removed, vouchersVoided: r.vouchersVoided } });
+    for (const id of [r.customerId, ...r.alsoChanged]) void svc.notifier.passChanged(id).catch(() => {});
+    return { ok: true, removed: r.removed, vouchersVoided: r.vouchersVoided, stamps: r.card.stamps, stampsRequired: r.stampsRequired };
   });
 
   app.post('/redeem', async (req) => {
     const s = await staff(req);
     const { code } = z.object({ code: z.string().trim().min(3).max(40) }).parse(req.body);
     const r = await redeemVoucher(db, code, s.id, s.storeId);
+    void svc.notifier.passChanged(r.customerId).catch(() => {});
+    return { ok: true, title: r.title, code: code.trim().toUpperCase() };
+  });
+
+  // Redeemed the wrong voucher (or the member changed their mind): put it back within a few minutes.
+  app.post('/redeem/undo', async (req) => {
+    const s = await staff(req);
+    const { code } = z.object({ code: z.string().trim().min(3).max(40) }).parse(req.body);
+    const r = await undoRedeem(db, code, { staffId: s.id, isManager: hasRole(s, 'manager') });
+    await audit(db, req, { staffId: s.id, action: 'voucher.unredeem', target: r.customerId, details: { code: code.toUpperCase() } });
     void svc.notifier.passChanged(r.customerId).catch(() => {});
     return { ok: true, title: r.title };
   });

@@ -22,10 +22,18 @@ const fingerprints = (email: string, phone: string | null | undefined) => [
   ...(phone && phoneKey(phone) ? [fingerprint('phone', phoneKey(phone))] : []),
 ];
 
-export async function welcomeAlreadyClaimed(q: Queryable, email: string, phone: string | null | undefined) {
-  return !!(await one(q, 'SELECT 1 FROM welcome_claims WHERE key_hash = ANY($1)', [fingerprints(email, phone)]));
+/**
+ * Claims the welcome gift for this email and mobile number in one step. Returns false when either
+ * one already had it. Done as a single insert so that two sign-ups racing (say two Gmail spellings
+ * of one inbox) can't both see "not claimed yet": the second waits on the first and then loses.
+ */
+export async function claimWelcome(q: Queryable, email: string, phone: string | null | undefined) {
+  const keys = fingerprints(email, phone);
+  const r = await q.query('INSERT INTO welcome_claims (key_hash) SELECT unnest($1::text[]) ON CONFLICT DO NOTHING', [keys]);
+  return r.rowCount === keys.length;
 }
 
+/** Marks a mobile number as having had the welcome gift (e.g. a member moved their account to it). */
 export async function recordWelcomeClaim(q: Queryable, email: string, phone: string | null | undefined) {
   await q.query('INSERT INTO welcome_claims (key_hash) SELECT unnest($1::text[]) ON CONFLICT DO NOTHING', [fingerprints(email, phone)]);
 }
